@@ -637,18 +637,20 @@ function conectarGoogle() {
         (grRes.contactGroups||[]).forEach(g => { gruposMap[g.resourceName] = g.name; });
         window._gruposMap = gruposMap;
 
-        // Cargar 500 contactos en 10 páginas de 50
+        // Cargar todos los contactos con paginación (máx 1000 por página, sin límite de páginas)
         let todosContactos = [];
         let nextPageToken = null;
         let paginas = 0;
         do {
-          const pageUrl = "https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses,phoneNumbers,organizations,biographies,metadata,memberships&pageSize=50"
+          const pageUrl = "https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses,phoneNumbers,organizations,biographies,metadata,memberships&pageSize=1000"
             + (nextPageToken ? `&pageToken=${nextPageToken}` : "");
           const cr = await (await fetch(pageUrl, {headers:{Authorization:`Bearer ${resp.access_token}`}})).json();
           todosContactos = todosContactos.concat(cr.connections || []);
           nextPageToken = cr.nextPageToken || null;
           paginas++;
-        } while (nextPageToken && paginas < 10);
+          // Actualizar progreso
+          document.getElementById("info-text").innerHTML = `Cargando... ${todosContactos.length} contactos`;
+        } while (nextPageToken && paginas < 20);
 
         // Filtrar los de NO EMAILS COMERCIALES
         const filtrados = todosContactos.filter(p => {
