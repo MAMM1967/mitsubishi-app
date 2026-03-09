@@ -192,15 +192,6 @@
                 </div>
                 <button class="btn-regen" onclick="regenWapp()">↻ Regenerar mensaje</button>
 
-                <!-- WhatsApp Business API -->
-                <div class="wapp-api-box" style="margin-top:12px;">
-                  <div class="wapp-api-title">📡 Envío automático · WhatsApp Business API</div>
-                  <input class="wapp-api-input" id="waba-token" type="password" placeholder="Token de WhatsApp Business API" />
-                  <input class="wapp-api-input" id="waba-phone-id" type="text" placeholder="Phone Number ID" />
-                  <button class="btn-wapp-api" onclick="enviarWappAPI()">⚡ Enviar automáticamente</button>
-                  <div style="font-size:11px;color:#4b5563;margin-top:6px;">Necesitas cuenta en <a href="https://business.whatsapp.com" target="_blank" style="color:#25d366;">WhatsApp Business API</a> (Meta for Developers)</div>
-                </div>
-
                 <button class="btn-marcar" style="background:#001a0d;color:#25d366;border-color:#25d36644;margin-top:8px;" onclick="marcarWappEnviado()">✓ Marcar WhatsApp enviado</button>
               </div>
             </div>
@@ -587,6 +578,39 @@ async function registrarContactoEnGoogle(c) {
 function abrirWappWeb() {
   const tel = document.getElementById("wapp-tel").value.replace(/\D/g,"");
   document.getElementById("btn-wapp-web").href = `https://wa.me/${tel}?text=${encodeURIComponent(wappMensaje)}`;
+  // Auto-marcar como enviado y registrar en Google Contacts
+  setTimeout(() => {
+    registrarWappEnGoogle();
+    marcarWappEnviado();
+  }, 300);
+}
+
+async function registrarWappEnGoogle() {
+  if (!window._gToken || !selCliente?.fuenteG) return;
+  const hoy = new Date();
+  const dd = String(hoy.getDate()).padStart(2,"0");
+  const mm = String(hoy.getMonth()+1).padStart(2,"0");
+  const yyyy = hoy.getFullYear();
+  const fechaStr = `${dd}-${mm}-${yyyy}`;
+  const textoWapp = selCliente.esIntermediario
+    ? "Envío WhatsApp de seguimiento de proyectos donde poder ofertar"
+    : "Envío WhatsApp de seguimiento de renovaciones";
+  const nuevaLinea = `\n${fechaStr}\n${textoWapp}`;
+  try {
+    const getRes = await fetch(`https://people.googleapis.com/v1/${selCliente.id}?personFields=biographies,metadata`,
+      { headers: { "Authorization": `Bearer ${window._gToken}` } });
+    if (!getRes.ok) return;
+    const contactData = await getRes.json();
+    const etag = contactData.etag;
+    const notasActuales = contactData.biographies?.[0]?.value || "";
+    const notasNuevas = notasActuales + nuevaLinea;
+    await fetch(`https://people.googleapis.com/v1/${selCliente.id}:updateContact?updatePersonFields=biographies`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${window._gToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ etag, biographies: [{ value: notasNuevas, contentType: "TEXT_PLAIN" }] })
+    });
+    console.log("WhatsApp registrado en Google Contacts OK");
+  } catch(e) { console.log("Error registrando WhatsApp:", e.message); }
 }
 
 function marcarWappEnviado() {
@@ -598,26 +622,7 @@ function marcarWappEnviado() {
   renderLista();
 }
 
-async function enviarWappAPI() {
-  const token   = document.getElementById("waba-token").value.trim();
-  const phoneId = document.getElementById("waba-phone-id").value.trim();
-  const tel     = document.getElementById("wapp-tel").value.replace(/\D/g,"");
-  if (!token || !phoneId || !tel) { alert("Rellena el token, Phone Number ID y teléfono."); return; }
-  try {
-    const res = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${token}` },
-      body: JSON.stringify({ messaging_product:"whatsapp", to: tel, type:"text", text:{ body: wappMensaje } })
-    });
-    const data = await res.json();
-    if (data.messages) {
-      alert("✅ WhatsApp enviado correctamente.");
-      marcarWappEnviado();
-    } else {
-      alert("Error: " + JSON.stringify(data.error || data));
-    }
-  } catch(e) { alert("Error de conexión: " + e.message); }
-}
+
 
 // ── GOOGLE AUTH ───────────────────────────────────────────────────────────────
 function conectarGoogle() {
@@ -768,9 +773,15 @@ function mapContact(p) {
     e.toUpperCase().includes("CARROCERO") ||
     e.toUpperCase().includes("RENTING") ||
     e.toUpperCase().includes("SERVICIO OFICIAL") ||
+    e.toUpperCase().includes("SERVICIO TECNICO") ||
+    e.toUpperCase().includes("SERVICIO TÉCNICO") ||
     e.toUpperCase().includes("INTERMEDIARIO")
   );
-  return { id:p.resourceName||Math.random().toString(36).slice(2), empresa:p.organizations?.[0]?.name||"Empresa desconocida", contacto:p.names?.[0]?.displayName||"Sin nombre", cargo:p.organizations?.[0]?.title||"", email:p.emailAddresses?.[0]?.value||"", telefono:p.phoneNumbers?.[0]?.value||"", sector:sM?sM[1].trim():"Ver notas", equipos:eM?eM[1].trim():"Ver notas", ultimoContacto, proximaAccion: proximaAccion||null, historial:notas||"Sin historial.", etiquetas, esClienteFinal, esIntermediario, fuenteG:true };
+  // Seleccionar móvil preferentemente (evitar fijos que empiezan por 9 en España)
+  const telefonos = p.phoneNumbers || [];
+  const movil = telefonos.find(t => { const n = t.value.replace(/\D/g,""); return n.startsWith("6") || n.startsWith("7") || n.startsWith("346") || n.startsWith("347"); });
+  const telefono = (movil || telefonos[0])?.value || "";
+  return { id:p.resourceName||Math.random().toString(36).slice(2), empresa:p.organizations?.[0]?.name||"Empresa desconocida", contacto:p.names?.[0]?.displayName||"Sin nombre", cargo:p.organizations?.[0]?.title||"", email:p.emailAddresses?.[0]?.value||"", telefono, sector:sM?sM[1].trim():"Ver notas", equipos:eM?eM[1].trim():"Ver notas", ultimoContacto, proximaAccion: proximaAccion||null, historial:notas||"Sin historial.", etiquetas, esClienteFinal, esIntermediario, fuenteG:true };
 }
 
 function mostrarError(msg) {
