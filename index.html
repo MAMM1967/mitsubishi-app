@@ -738,12 +738,18 @@ function extraerFechas(texto) {
 }
 
 function extraerProximaAccion(texto) {
-  // Detecta "fecha proxima accion: DD-MM-YYYY" o "fecha proxima accion DD-MM-YYYY" con o sin ceros
-  const regex = /fecha\s+pr[oó]xima\s+acci[oó]n[:\s]+\s*(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4})/i;
-  const m = texto.match(regex);
-  if (!m) return null;
-  const fecha = `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
-  return isNaN(new Date(fecha).getTime()) ? null : fecha;
+  // Detecta cualquier línea con "próxima" y "acción" (con/sin acento) y una fecha en esa línea
+  const lineas = texto.split("\n");
+  for (const linea of lineas) {
+    if (/pr[oó]xima/i.test(linea) && /acci[oó]n/i.test(linea)) {
+      const mF = linea.match(/(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4})/);
+      if (mF) {
+        const fecha = `${mF[3]}-${mF[2].padStart(2,"0")}-${mF[1].padStart(2,"0")}`;
+        if (!isNaN(new Date(fecha).getTime())) return fecha;
+      }
+    }
+  }
+  return null;
 }
 
 function mapContact(p) {
