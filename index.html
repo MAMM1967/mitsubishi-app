@@ -439,7 +439,7 @@ ASUNTO: [asunto]
     document.getElementById("asunto-text").textContent = emailAsunto;
     document.getElementById("cuerpo-text").textContent = emailCuerpo;
     document.getElementById("btn-abrir-email").href = `mailto:${c.email}?subject=${encodeURIComponent(emailAsunto)}&body=${encodeURIComponent(emailCuerpo)}`;
-    document.getElementById("btn-abrir-email").onclick = () => { registrarContactoEnGoogle(c); setTimeout(marcarEmailEnviado, 300); };
+    document.getElementById("btn-abrir-email").onclick = () => { registrarContactoEnGoogle(c); marcarEmailEnviado(); };
   } catch { emailCuerpo="Error de conexión."; document.getElementById("cuerpo-text").textContent=emailCuerpo; }
   document.getElementById("spin-email").style.display   = "none";
   document.getElementById("email-result").style.display = "block";
@@ -450,12 +450,14 @@ function copiarEmail() { navigator.clipboard.writeText(`Asunto: ${emailAsunto}\n
 
 function marcarEmailEnviado() {
   if(!selCliente) return;
-  estado[selCliente.id] = { ...estado[selCliente.id], emailEnviadoEn: Date.now(), posponerHasta: null };
+  const id = selCliente.id;
+  // Actualizar fecha de último contacto a hoy
+  const hoy = new Date().toISOString().split("T")[0];
+  clientes = clientes.map(c => c.id===id ? {...c, ultimoContacto: hoy} : c);
+  estado[id] = { ...estado[id], emailEnviadoEn: Date.now(), posponerHasta: null };
   guardarEstado();
+  cerrarPanel();
   renderLista();
-  const btn = document.querySelector(".btn-marcar");
-  if(btn){ btn.textContent="✓ Email marcado — WhatsApp en 2 días si no responden"; btn.style.background="#001a0d"; btn.style.color="#25d366"; }
-  setTimeout(()=>{ if(selCliente) actualizarWappPanel(); }, 500);
 }
 
 function togglePosponer() {
