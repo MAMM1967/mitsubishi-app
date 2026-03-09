@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mitsubishi · Seguimiento Comercial</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #0a0d14; color: #e8eaf0; font-family: 'DM Sans','Segoe UI',sans-serif; min-height: 100vh; }
+    @keyframes spin   { to { transform: rotate(360deg); } }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+    input::placeholder { color: #4b5563; }
+    a { text-decoration: none; }
+
+    #header { background: linear-gradient(135deg,#0d1117,#111827); border-bottom: 1px solid #1e2535; padding: 0 24px; }
+    #header-inner { max-width: 1140px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; height: 64px; }
+    .logo-box { width:36px; height:36px; border-radius:8px; background:linear-gradient(135deg,#e63946,#c1121f); display:flex; align-items:center; justify-content:center; font-weight:900; font-size:18px; color:#fff; }
+
+    #btn-google { background:#fff; color:#3c4043; border:1px solid #dadce0; border-radius:8px; padding:7px 16px; font-size:13px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:8px; }
+    #btn-google:disabled { background:#1e2535; color:#6b7280; cursor:not-allowed; border-color:#374151; }
+    #user-badge { display:none; align-items:center; gap:7px; background:#0d1a0d; border:1px solid #34a85344; border-radius:20px; padding:5px 14px; font-size:12px; color:#34a853; font-weight:600; }
+    #badge-urgent { background:#2a0a0a; border:1px solid #ff4444; border-radius:20px; padding:4px 12px; font-size:12px; color:#ff6b6b; font-weight:600; display:none; }
+
+    #info-bar { max-width:1140px; margin:10px auto 0; padding:0 24px; display:flex; align-items:center; gap:8px; font-size:12px; color:#6b7280; }
+
+    #error-box { max-width:1140px; margin:14px auto 0; padding:0 24px; display:none; }
+    #error-inner { background:#0d1a2a; border:1px solid #4285f444; border-radius:10px; padding:14px 18px; font-size:13px; color:#93c5fd; line-height:1.8; }
+
+    #main { max-width:1140px; margin:0 auto; padding:18px 24px; display:grid; grid-template-columns:1fr; gap:20px; align-items:start; }
+    #main.with-panel { grid-template-columns: 1fr 480px; }
+
+    #search { width:100%; background:#0d1117; border:1px solid #1e2535; border-radius:8px; padding:9px 14px; color:#e8eaf0; font-size:13px; outline:none; margin-bottom:14px; }
+
+    .cliente-card { background:#0d1117; border:1px solid #1e2535; border-radius:10px; padding:13px 16px; cursor:pointer; display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; transition:background 0.12s; animation:fadeIn 0.2s ease; margin-bottom:8px; }
+    .cliente-card:hover, .cliente-card.selected { background:#111827; border-color: #374151; }
+    .badge { font-size:10px; font-weight:700; padding:1px 7px; border-radius:10px; }
+    .badge-OK      { background:#002a1a; color:#00cc88; border:1px solid #00cc8844; }
+    .badge-PRÓXIMO { background:#2a1a00; color:#ffaa00; border:1px solid #ffaa0044; }
+    .badge-URGENTE { background:#2a0a0a; color:#ff4444; border:1px solid #ff44440a; }
+    .badge-google  { font-size:10px; color:#34a853; background:#0d1a0d; border:1px solid #34a85344; padding:1px 6px; border-radius:7px; display:inline-flex; align-items:center; gap:3px; }
+    .badge-wapp    { font-size:10px; color:#25d366; background:#001a0d; border:1px solid #25d36644; padding:1px 6px; border-radius:7px; }
+
+    /* PANEL */
+    #panel { background:#0d1117; border:1px solid #1e2535; border-radius:12px; overflow:hidden; position:sticky; top:24px; max-height:calc(100vh - 80px); display:none; flex-direction:column; }
+    #panel.visible { display:flex; }
+    #panel-header { background:linear-gradient(135deg,#1a0608,#1e0a0d); border-bottom:1px solid #2d1015; padding:13px 16px; display:flex; align-items:center; justify-content:space-between; }
+    #panel-tabs { display:flex; gap:4px; padding:10px 16px 0; border-bottom:1px solid #1e2535; }
+    .tab-btn { background:none; border:none; color:#6b7280; font-size:12px; font-weight:600; cursor:pointer; padding:6px 14px; border-radius:6px 6px 0 0; border-bottom:2px solid transparent; transition:all 0.12s; }
+    .tab-btn.active { color:#e8eaf0; border-bottom:2px solid #e63946; background:#111827; }
+    #panel-body { padding:16px; overflow-y:auto; flex:1; }
+
+    .dest-grid { background:#111827; border-radius:8px; padding:12px; margin-bottom:12px; font-size:12px; border:1px solid #1e2535; display:grid; grid-template-columns:auto 1fr; gap:5px 12px; color:#9ca3af; }
+    .dest-label { color:#6b7280; }
+    .dest-name  { font-weight:600; color:#e8eaf0; }
+
+    .spin-wrap { text-align:center; padding:50px 0; }
+    .spin-circle { width:34px; height:34px; border:3px solid #1e2535; border-top:3px solid #e63946; border-radius:50%; margin:0 auto 14px; animation:spin 0.8s linear infinite; }
+    .spin-wrap.wapp .spin-circle { border-top-color:#25d366; }
+
+    .asunto-box { background:#111827; border-radius:7px; padding:9px 12px; margin-bottom:9px; border:1px solid #1e2535; }
+    .asunto-label { font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:3px; }
+    .msg-body { background:#111827; border-radius:8px; padding:14px; font-size:13px; line-height:1.8; color:#d1d5db; border:1px solid #1e2535; white-space:pre-wrap; }
+    .btn-row { display:flex; gap:7px; margin-top:13px; }
+    .btn-primary { flex:1; background:linear-gradient(135deg,#c1121f,#e63946); color:#fff; border:none; border-radius:8px; padding:10px; font-size:13px; font-weight:700; cursor:pointer; text-align:center; }
+    .btn-primary.wapp { background:linear-gradient(135deg,#128c4a,#25d366); }
+    .btn-secondary { background:#1e2535; color:#9ca3af; border:1px solid #374151; border-radius:8px; padding:10px 12px; font-size:12px; cursor:pointer; font-weight:600; }
+    .btn-regen { width:100%; margin-top:6px; background:none; color:#6b7280; border:1px solid #1e2535; border-radius:7px; padding:8px; font-size:12px; cursor:pointer; }
+    .btn-marcar { width:100%; margin-top:5px; background:#002a1a; color:#00cc88; border:1px solid #00cc8844; border-radius:7px; padding:8px; font-size:12px; cursor:pointer; font-weight:600; }
+    .btn-obviar { width:100%; margin-top:5px; background:#1a1a2a; color:#9ca3af; border:1px solid #374151; border-radius:7px; padding:8px; font-size:12px; cursor:pointer; font-weight:600; }
+    .posponer-row { display:flex; gap:6px; margin-top:4px; }
+    .btn-posponer { flex:1; background:#111827; color:#6b7280; border:1px solid #1e2535; border-radius:6px; padding:6px 4px; font-size:11px; cursor:pointer; font-weight:600; transition:all 0.12s; }
+    .btn-posponer:hover { background:#1e2535; color:#e8eaf0; }
+    .badge-proxima { font-size:10px; color:#a78bfa; background:#1a1030; border:1px solid #a78bfa44; padding:1px 7px; border-radius:7px; }
+    .proxima-alert { background:#1a1030; border:1px solid #a78bfa44; border-radius:8px; padding:10px 14px; font-size:12px; color:#a78bfa; margin-bottom:10px; line-height:1.6; }
+
+    /* WAPP PANEL */
+    .wapp-info { background:#001a0d; border:1px solid #25d36633; border-radius:8px; padding:12px 14px; font-size:12px; color:#6b7280; margin-bottom:12px; line-height:1.7; }
+    .wapp-info strong { color:#25d366; }
+    .wapp-tel-row { display:flex; gap:8px; margin-bottom:12px; }
+    .wapp-tel-input { flex:1; background:#111827; border:1px solid #1e2535; border-radius:7px; padding:8px 12px; color:#e8eaf0; font-size:13px; outline:none; }
+    .wapp-tel-input:focus { border-color:#25d36666; }
+    .btn-wapp-web { flex:1; background:linear-gradient(135deg,#128c4a,#25d366); color:#fff; border:none; border-radius:8px; padding:10px; font-size:13px; font-weight:700; cursor:pointer; text-align:center; display:block; }
+    .wapp-api-box { background:#111827; border:1px solid #1e2535; border-radius:8px; padding:14px; margin-top:10px; }
+    .wapp-api-title { font-size:11px; color:#6b7280; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:8px; }
+    .wapp-api-input { width:100%; background:#0d1117; border:1px solid #1e2535; border-radius:6px; padding:7px 10px; color:#e8eaf0; font-size:12px; outline:none; margin-bottom:6px; }
+    .btn-wapp-api { width:100%; background:#1a2a1a; color:#25d366; border:1px solid #25d36644; border-radius:7px; padding:8px; font-size:12px; cursor:pointer; font-weight:600; }
+
+    .pendiente-wapp { background:#001a0d; border:1px solid #25d36633; border-radius:6px; padding:3px 8px; font-size:10px; color:#25d366; font-weight:600; }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <div id="header">
+    <div id="header-inner">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div class="logo-box">M</div>
+        <div>
+          <div style="font-size:15px;font-weight:700;letter-spacing:-0.3px;">Mitsubishi Frigoríficos</div>
+          <div style="font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px;">Seguimiento Comercial · IA</div>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;">
+        <div id="badge-urgent"></div>
+        <div id="user-badge">
+          <div style="width:7px;height:7px;border-radius:50%;background:#34a853;"></div>
+          <span id="user-name"></span>
+        </div>
+        <button id="btn-google" onclick="conectarGoogle()">
+          <svg width="16" height="16" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-3.59-13.46-8.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          Conectar Google Contacts
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div id="error-box"><div id="error-inner"></div></div>
+  <div id="info-bar">
+    <div style="width:6px;height:6px;border-radius:50%;background:#4b5563;" id="dot-status"></div>
+    <span id="info-text">Datos de demo · Conecta Google Contacts para ver tu cartera real</span>
+  </div>
+
+  <!-- MAIN -->
+  <div id="main">
+    <div id="lista-col">
+      <input id="search" type="text" placeholder="🔍  Buscar empresa o contacto..." oninput="renderLista()" />
+      <div id="lista"></div>
+    </div>
+
+    <!-- PANEL -->
+    <div id="panel">
+      <div id="panel-header">
+        <div>
+          <div style="font-size:11px;font-weight:700;color:#e63946;letter-spacing:0.5px;" id="panel-tag">✉ BORRADOR · IA</div>
+          <div style="font-size:12px;color:#9ca3af;margin-top:1px;" id="panel-empresa"></div>
+        </div>
+        <button onclick="cerrarPanel()" style="background:none;border:none;color:#6b7280;cursor:pointer;font-size:20px;">×</button>
+      </div>
+      <!-- TABS -->
+      <div id="panel-tabs">
+        <button class="tab-btn active" onclick="switchTab('email')" id="tab-email">✉ Email</button>
+        <button class="tab-btn" onclick="switchTab('wapp')" id="tab-wapp">💬 WhatsApp</button>
+      </div>
+      <div id="panel-body">
+        <!-- PRÓXIMA ACCIÓN ALERT -->
+        <div id="proxima-alert" class="proxima-alert" style="display:none;"></div>
+        <!-- DEST INFO -->
+        <div class="dest-grid" id="dest-grid"></div>
+
+        <!-- EMAIL TAB -->
+        <div id="content-email">
+          <div class="spin-wrap" id="spin-email"><div class="spin-circle"></div><div style="font-size:13px;color:#6b7280;">Generando email personalizado...</div></div>
+          <div id="email-result" style="display:none;animation:fadeIn 0.3s ease;">
+            <div class="asunto-box"><div class="asunto-label">Asunto</div><div style="font-size:13px;font-weight:600;" id="asunto-text"></div></div>
+            <div class="msg-body" id="cuerpo-text"></div>
+            <div class="btn-row">
+              <a class="btn-primary" id="btn-abrir-email" href="#">✉ Abrir email</a>
+              <button class="btn-secondary" onclick="copiarEmail()">Copiar</button>
+            </div>
+            <button class="btn-marcar" onclick="marcarEmailEnviado()">✓ Marcar email enviado — esperar respuesta 2 días</button>
+            <button class="btn-obviar" onclick="togglePosponer()">⏭ No procede ahora — posponer</button>
+            <div class="posponer-row" id="posponer-row" style="display:none;">
+              <button class="btn-posponer" onclick="posponer(30)">+1 mes</button>
+              <button class="btn-posponer" onclick="posponer(90)">+3 meses</button>
+              <button class="btn-posponer" onclick="posponerFecha()">📅 Fecha</button>
+              <input type="date" id="fecha-posponer" style="display:none;background:#111827;border:1px solid #374151;border-radius:6px;padding:4px 8px;color:#e8eaf0;font-size:11px;flex:2;" onchange="posponerFechaElegida()" />
+            </div>
+          </div>
+        </div>
+
+        <!-- WAPP TAB -->
+        <div id="content-wapp" style="display:none;">
+          <div class="wapp-info" id="wapp-estado-info">
+            💬 Genera primero el email y márcalo como enviado.<br>
+            El WhatsApp se activa si en <strong>2 días</strong> no hay respuesta.
+          </div>
+          <div id="wapp-activo" style="display:none;">
+            <div class="spin-wrap wapp" id="spin-wapp" style="display:none;"><div class="spin-circle"></div><div style="font-size:13px;color:#6b7280;">Generando mensaje WhatsApp...</div></div>
+            <div id="wapp-result" style="display:none;animation:fadeIn 0.3s ease;">
+              <div class="msg-body" id="wapp-text"></div>
+              <div style="margin-top:12px;">
+                <div style="font-size:11px;color:#6b7280;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Teléfono de destino</div>
+                <div class="wapp-tel-row">
+                  <input class="wapp-tel-input" id="wapp-tel" type="tel" placeholder="+34 612 345 678" />
+                </div>
+                <div class="btn-row">
+                  <a class="btn-wapp-web" id="btn-wapp-web" href="#" target="_blank" onclick="abrirWappWeb()">💬 Abrir WhatsApp Web</a>
+                  <button class="btn-secondary" onclick="copiarWapp()">Copiar</button>
+                </div>
+                <button class="btn-regen" onclick="regenWapp()">↻ Regenerar mensaje</button>
+
+                <!-- WhatsApp Business API -->
+                <div class="wapp-api-box" style="margin-top:12px;">
+                  <div class="wapp-api-title">📡 Envío automático · WhatsApp Business API</div>
+                  <input class="wapp-api-input" id="waba-token" type="password" placeholder="Token de WhatsApp Business API" />
+                  <input class="wapp-api-input" id="waba-phone-id" type="text" placeholder="Phone Number ID" />
+                  <button class="btn-wapp-api" onclick="enviarWappAPI()">⚡ Enviar automáticamente</button>
+                  <div style="font-size:11px;color:#4b5563;margin-top:6px;">Necesitas cuenta en <a href="https://business.whatsapp.com" target="_blank" style="color:#25d366;">WhatsApp Business API</a> (Meta for Developers)</div>
+                </div>
+
+                <button class="btn-marcar" style="background:#001a0d;color:#25d366;border-color:#25d36644;margin-top:8px;" onclick="marcarWappEnviado()">✓ Marcar WhatsApp enviado</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+<script>
+const GOOGLE_CLIENT_ID = "232128500768-qgvhqkmn8383j16s5qvbsa85ot2g242i.apps.googleusercontent.com";
+const GOOGLE_SCOPES    = "https://www.googleapis.com/auth/contacts";
+const STORAGE_KEY      = "mitsubishi_seguimiento";
+
+const DEMO = [
+  { id:"d1", empresa:"Transportes García & Hijos",  contacto:"Javier García", cargo:"Director de Operaciones", email:"jgarcia@transportesgarcia.es",   telefono:"+34 612 345 678", sector:"Transporte frigorífico nacional", equipos:"3x Mitsubishi FRC-520, 1x FRC-320", ultimoContacto:"2024-10-15", historial:"Renovaron flota en 2021. Interesados en equipos eléctricos. Posible ampliación en 2025.", fuenteG:false },
+  { id:"d2", empresa:"Logística Frescos del Norte", contacto:"María Suárez",  cargo:"Gerente de Flota",        email:"msuarez@frescosnorte.com",       telefono:"+34 688 901 234", sector:"Distribución alimentaria",        equipos:"6x Mitsubishi FRC-680 (2019)",        ultimoContacto:"2024-11-02", historial:"Flota de 2019, 5 años de uso. Preguntaron por garantías extendidas. Posible renovación total.", fuenteG:false },
+  { id:"d3", empresa:"MercaFrío Distribución",      contacto:"Pedro Alonso",  cargo:"CEO",                     email:"palonso@mercafrio.es",           telefono:"+34 655 123 456", sector:"Mayorista alimentación",           equipos:"2x Mitsubishi FRC-420",              ultimoContacto:"2024-08-20", historial:"Cliente desde 2018. Estudian 3-4 unidades nuevas para Q2 2025.", fuenteG:false },
+  { id:"d4", empresa:"Congelados Rápidos SL",       contacto:"Ana Bermejo",   cargo:"Directora Compras",       email:"abermejo@congeladosrapidos.com", telefono:"+34 699 876 543", sector:"Transporte de congelados",        equipos:"1x Mitsubishi FRC-220 (2020)",       ultimoContacto:"2024-07-10", historial:"Empresa en crecimiento. Interés en modelos hybrid.", fuenteG:false },
+];
+
+let clientes   = [...DEMO];
+let selCliente = null;
+let currentTab = "email";
+let emailAsunto = "", emailCuerpo = "", wappMensaje = "";
+
+// Estado persistente en localStorage
+let estado = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+// estado[id] = { emailEnviadoEn: timestamp, wappEnviado: bool, ultimoContacto: fecha }
+
+function guardarEstado() { localStorage.setItem(STORAGE_KEY, JSON.stringify(estado)); }
+
+const dias = f => Math.floor((Date.now() - new Date(f)) / 86400000);
+const fmt  = f => new Date(f).toLocaleDateString("es-ES",{day:"2-digit",month:"short",year:"numeric"});
+const prio = d => d>=120 ? {label:"URGENTE",color:"#ff4444"} : d>=80 ? {label:"PRÓXIMO",color:"#ffaa00"} : {label:"OK",color:"#00cc88"};
+
+function diasSinRespuesta(id) {
+  const e = estado[id];
+  if (!e?.emailEnviadoEn) return null;
+  return Math.floor((Date.now() - e.emailEnviadoEn) / 86400000);
+}
+
+function necesitaWapp(id) {
+  const d = diasSinRespuesta(id);
+  return d !== null && d >= 2 && !estado[id]?.wappEnviado;
+}
+
+function gSvg(s=9){ return `<svg width="${s}" height="${s}" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.08 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-3.59-13.46-8.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>`; }
+
+function renderLista() {
+  const busq = document.getElementById("search").value.toLowerCase();
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const sorted = [...clientes]
+    .filter(c => !busq || c.empresa.toLowerCase().includes(busq) || c.contacto.toLowerCase().includes(busq))
+    .filter(c => !estaPostpuesto(c.id)) // ocultar postpuestos
+    .sort((a,b) => {
+      // 1. Próxima acción vencida (fecha llegada)
+      const aPA = proximaAccionPendiente(a) ? 1 : 0;
+      const bPA = proximaAccionPendiente(b) ? 1 : 0;
+      if (bPA !== aPA) return bPA - aPA;
+      // 2. WhatsApp pendiente
+      const aw = necesitaWapp(a.id) ? 1 : 0;
+      const bw = necesitaWapp(b.id) ? 1 : 0;
+      if (bw !== aw) return bw - aw;
+      // 3. Por días sin contacto
+      return dias(b.ultimoContacto) - dias(a.ultimoContacto);
+    });
+
+  const urgentes = clientes.filter(c => dias(c.ultimoContacto) >= 120 || necesitaWapp(c.id)).length;
+  const bu = document.getElementById("badge-urgent");
+  if (urgentes > 0) { bu.style.display="block"; bu.textContent=`⚡ ${urgentes} requieren acción`; }
+  else bu.style.display="none";
+
+  const wappPendientes = clientes.filter(c => necesitaWapp(c.id)).length;
+
+  document.getElementById("lista").innerHTML = sorted.length === 0
+    ? `<div style="text-align:center;padding:40px 0;color:#4b5563;font-size:13px;">Sin resultados</div>`
+    : sorted.map(c => {
+        const d   = dias(c.ultimoContacto);
+        const p   = prio(d);
+        const sel = selCliente?.id === c.id;
+        const e   = estado[c.id] || {};
+        const dsR = diasSinRespuesta(c.id);
+        const nW  = necesitaWapp(c.id);
+        return `
+        <div class="cliente-card ${sel?"selected":""}" onclick="clickCliente('${c.id}')" style="border-left:3px solid ${nW ? '#25d366' : p.color};">
+          <div>
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:3px;flex-wrap:wrap;">
+              <span style="font-size:14px;font-weight:700;">${c.empresa}</span>
+              <span class="badge badge-${p.label}">${p.label}</span>
+              ${c.fuenteG ? `<span class="badge-google">${gSvg(9)} Google</span>` : ""}
+              ${proximaAccionPendiente(c) ? `<span class="badge-proxima">📅 Acción hoy</span>` : c.proximaAccion && new Date(c.proximaAccion) > hoy ? `<span style="font-size:10px;color:#a78bfa;font-weight:600;">📅 ${fmt(c.proximaAccion)}</span>` : ""}
+              ${nW ? `<span class="badge-wapp">💬 WhatsApp pendiente</span>` : ""}
+              ${e.emailEnviadoEn && !nW && !e.wappEnviado && dsR !== null ? `<span style="font-size:10px;color:#ffaa00;">⏳ Email enviado hace ${dsR}d</span>` : ""}
+              ${e.wappEnviado ? `<span style="font-size:10px;color:#25d366;font-weight:600;">✓ WApp enviado</span>` : ""}
+              ${e.ultimoContacto && !e.emailEnviadoEn ? `<span style="font-size:10px;color:#00cc88;font-weight:600;">✓ Contactado</span>` : ""}
+            </div>
+            <div style="font-size:12px;color:#9ca3af;margin-bottom:4px;">${c.contacto}${c.cargo ? ` · ${c.cargo}` : ""}</div>
+            <div style="font-size:11px;color:#6b7280;display:flex;gap:12px;flex-wrap:wrap;">
+              ${c.sector!=="Ver notas" ? `<span>🏭 ${c.sector}</span>` : ""}
+              ${c.email ? `<span>✉ ${c.email}</span>` : ""}
+              ${c.telefono ? `<span>📞 ${c.telefono}</span>` : ""}
+            </div>
+          </div>
+          <div style="text-align:right;min-width:80px;">
+            <div style="font-size:26px;font-weight:800;line-height:1;color:${nW ? '#25d366' : p.color};">${d}</div>
+            <div style="font-size:10px;color:#6b7280;margin-top:1px;">días</div>
+            <div style="font-size:10px;color:#4b5563;margin-top:4px;">${fmt(c.ultimoContacto)}</div>
+            <div style="margin-top:7px;font-size:11px;color:${nW?'#25d366':'#e63946'};font-weight:600;background:${nW?'#001a0d':'#1a0608'};border-radius:5px;padding:2px 8px;border:1px solid ${nW?'#25d36633':'#3d0d12'};">
+              ${nW ? "💬 Enviar WApp" : "✉ Email IA"}
+            </div>
+          </div>
+        </div>`;
+      }).join("");
+}
+
+function clickCliente(id) {
+  selCliente = clientes.find(c => c.id === id);
+  renderLista();
+  // Si necesita WhatsApp, abrir directamente en pestaña WhatsApp
+  const tab = necesitaWapp(id) ? "wapp" : "email";
+  abrirPanel(selCliente, tab);
+  if (tab === "email") generarEmail(selCliente);
+  else generarWapp(selCliente);
+}
+
+function abrirPanel(c, tab="email") {
+  document.getElementById("panel").classList.add("visible");
+  document.getElementById("main").classList.add("with-panel");
+  document.getElementById("panel-empresa").textContent = c.empresa;
+  document.getElementById("dest-grid").innerHTML = `
+    <span class="dest-label">Para:</span>  <span class="dest-name">${c.contacto}</span>
+    ${c.cargo ? `<span class="dest-label">Cargo:</span><span style="color:#9ca3af">${c.cargo}</span>` : ""}
+    <span class="dest-label">Email:</span> <span style="color:#60a5fa;">${c.email||"No disponible"}</span>
+    ${c.telefono ? `<span class="dest-label">Tel:</span><span style="color:#9ca3af;">${c.telefono}</span>` : ""}
+  `;
+  if (c.telefono) document.getElementById("wapp-tel").value = c.telefono;
+
+  // Alerta próxima acción
+  const pa = document.getElementById("proxima-alert");
+  if (c.proximaAccion) {
+    const hoyPA = new Date(); hoyPA.setHours(0,0,0,0);
+    const diffDias = Math.ceil((new Date(c.proximaAccion) - hoyPA) / 86400000);
+    pa.innerHTML = diffDias <= 0
+      ? `📅 <strong>Acción prevista para hoy</strong> (${fmt(c.proximaAccion)}) — según tus notas`
+      : `📅 Próxima acción programada: <strong>${fmt(c.proximaAccion)}</strong> — en ${diffDias} día${diffDias!==1?"s":""}`;
+    pa.style.display = "block";
+  } else { pa.style.display = "none"; }
+
+  switchTab(tab);
+}
+
+function cerrarPanel() {
+  document.getElementById("panel").classList.remove("visible");
+  document.getElementById("main").classList.remove("with-panel");
+  selCliente = null; renderLista();
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.getElementById("content-email").style.display = tab==="email" ? "block" : "none";
+  document.getElementById("content-wapp").style.display  = tab==="wapp"  ? "block" : "none";
+  document.getElementById("tab-email").classList.toggle("active", tab==="email");
+  document.getElementById("tab-wapp").classList.toggle("active",  tab==="wapp");
+
+  const tag = document.getElementById("panel-tag");
+  tag.textContent = tab==="email" ? "✉ BORRADOR · EMAIL" : "💬 BORRADOR · WHATSAPP";
+
+  // Actualizar estado del panel WhatsApp
+  if (tab==="wapp" && selCliente) actualizarWappPanel();
+}
+
+function actualizarWappPanel() {
+  const id = selCliente?.id;
+  const activo = document.getElementById("wapp-activo");
+  const info   = document.getElementById("wapp-estado-info");
+  if (necesitaWapp(id)) {
+    info.style.display  = "none";
+    activo.style.display = "block";
+    if (!wappMensaje) generarWapp(selCliente);
+  } else {
+    const dsR = diasSinRespuesta(id);
+    if (dsR !== null) {
+      info.innerHTML = `⏳ Email enviado hace <strong style="color:#ffaa00;">${dsR} día${dsR!==1?"s":""}</strong>.<br>El WhatsApp se activará cuando pasen <strong>2 días</strong> sin respuesta.`;
+    } else {
+      info.innerHTML = `💬 Genera primero el email y márcalo como enviado.<br>El WhatsApp se activa si en <strong>2 días</strong> no hay respuesta.`;
+    }
+    info.style.display   = "block";
+    activo.style.display = "none";
+  }
+}
+
+// ── EMAIL ────────────────────────────────────────────────────────────────────
+async function generarEmail(c) {
+  document.getElementById("spin-email").style.display  = "block";
+  document.getElementById("email-result").style.display = "none";
+  const d = dias(c.ultimoContacto);
+  try {
+    const res = await fetch("https://damp-limit-0374.mezquiriz.workers.dev",{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000,
+        messages:[{role:"user", content:
+`Eres el asistente comercial del Director de Mitsubishi Equipos Frigoríficos para Transporte en España.
+
+CLIENTE:
+- Empresa: ${c.empresa}
+- Contacto: ${c.contacto}${c.cargo?` (${c.cargo})`:""}
+- Sector: ${c.sector}
+- Equipos actuales: ${c.equipos}
+- Último contacto: hace ${d} días (${fmt(c.ultimoContacto)})
+- Historial: ${c.historial}
+
+TIPO DE CLIENTE: ${c.esClienteFinal ? "CLIENTE FINAL (tiene flota propia)" : c.esIntermediario ? "INTERMEDIARIO (carrocero/renting/servicio oficial)" : "GENERAL"}
+
+${c.esClienteFinal ?
+  "OBJETIVO: Preguntarle si tiene previstas próximas renovaciones de flota donde podamos asesorarle y presentarle nuestras mejores condiciones." :
+  c.esIntermediario ?
+  "OBJETIVO: Preguntarle si está gestionando algún proyecto con equipos frigoríficos donde podamos asesorarle y ofrecerle nuestras mejores condiciones." :
+  "OBJETIVO: Explorar si tienen previsto renovar o ampliar su flota frigorífica próximamente."
+}
+
+Tono: director senior, cercano, no agresivo. Menciona sutilmente ventajas Mitsubishi (eficiencia energética, fiabilidad, red de soporte en España). Máximo 150 palabras. NO incluyas firma, despedida formal ni nombre al final — solo el cuerpo del email hasta el cierre natural.
+
+Formato exacto:
+ASUNTO: [asunto]
+
+[cuerpo del email]`}]})
+    });
+    const data = await res.json();
+    const txt  = data.content?.map(b=>b.text||"").join("\n") || "Error.";
+    const ls   = txt.split("\n");
+    const al   = ls.find(l=>l.startsWith("ASUNTO:"));
+    emailAsunto = al ? al.replace("ASUNTO:","").trim() : "";
+    emailCuerpo = ls.filter(l=>!l.startsWith("ASUNTO:")).join("\n").trim();
+    document.getElementById("asunto-text").textContent = emailAsunto;
+    document.getElementById("cuerpo-text").textContent = emailCuerpo;
+    document.getElementById("btn-abrir-email").href = `mailto:${c.email}?subject=${encodeURIComponent(emailAsunto)}&body=${encodeURIComponent(emailCuerpo)}`;
+    document.getElementById("btn-abrir-email").onclick = () => { registrarContactoEnGoogle(c); setTimeout(marcarEmailEnviado, 300); };
+  } catch { emailCuerpo="Error de conexión."; document.getElementById("cuerpo-text").textContent=emailCuerpo; }
+  document.getElementById("spin-email").style.display   = "none";
+  document.getElementById("email-result").style.display = "block";
+}
+
+function regenEmail() { if(selCliente) generarEmail(selCliente); }
+function copiarEmail() { navigator.clipboard.writeText(`Asunto: ${emailAsunto}\n\n${emailCuerpo}`); }
+
+function marcarEmailEnviado() {
+  if(!selCliente) return;
+  estado[selCliente.id] = { ...estado[selCliente.id], emailEnviadoEn: Date.now(), posponerHasta: null };
+  guardarEstado();
+  renderLista();
+  const btn = document.querySelector(".btn-marcar");
+  if(btn){ btn.textContent="✓ Email marcado — WhatsApp en 2 días si no responden"; btn.style.background="#001a0d"; btn.style.color="#25d366"; }
+  setTimeout(()=>{ if(selCliente) actualizarWappPanel(); }, 500);
+}
+
+function togglePosponer() {
+  const row = document.getElementById("posponer-row");
+  row.style.display = row.style.display === "none" ? "flex" : "none";
+}
+
+function posponer(dias) {
+  if(!selCliente) return;
+  const hasta = new Date();
+  hasta.setDate(hasta.getDate() + dias);
+  const hastaStr = hasta.toISOString().split("T")[0];
+  estado[selCliente.id] = { ...estado[selCliente.id], posponerHasta: hastaStr, emailEnviadoEn: null, wappEnviado: false };
+  guardarEstado();
+  cerrarPanel();
+  renderLista();
+}
+
+function posponerFecha() {
+  const inp = document.getElementById("fecha-posponer");
+  inp.style.display = inp.style.display === "none" ? "block" : "none";
+  if(inp.style.display === "block") inp.focus();
+}
+
+function posponerFechaElegida() {
+  const val = document.getElementById("fecha-posponer").value;
+  if(!val || !selCliente) return;
+  estado[selCliente.id] = { ...estado[selCliente.id], posponerHasta: val, emailEnviadoEn: null, wappEnviado: false };
+  guardarEstado();
+  cerrarPanel();
+  renderLista();
+}
+
+function estaPostpuesto(id) {
+  const h = estado[id]?.posponerHasta;
+  if (!h) return false;
+  return new Date(h) > new Date();
+}
+
+function proximaAccionPendiente(c) {
+  if (!c.proximaAccion) return false;
+  const hoy = new Date(); hoy.setHours(0,0,0,0);
+  const fecha = new Date(c.proximaAccion);
+  return fecha <= hoy;
+}
+
+// ── WHATSAPP ─────────────────────────────────────────────────────────────────
+async function generarWapp(c) {
+  document.getElementById("spin-wapp").style.display  = "block";
+  document.getElementById("wapp-result").style.display = "none";
+  const dsR = diasSinRespuesta(c.id);
+  try {
+    const res = await fetch("https://damp-limit-0374.mezquiriz.workers.dev",{
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:600,
+        messages:[{role:"user", content:
+`Eres el director comercial de Mitsubishi Equipos Frigoríficos para Transporte en España.
+Hace ${dsR||2} días enviaste un email a ${c.contacto} de ${c.empresa} sin obtener respuesta.
+
+Redacta un mensaje de WhatsApp breve y natural para hacer seguimiento. 
+- Tono: cercano, directo, sin presión
+- Haz referencia al email enviado de forma natural
+- Pregunta si lo recibieron o si tienen un momento para hablar
+- Máximo 3-4 líneas, sin saludos formales excesivos
+- Sin asteriscos ni formato especial, texto plano para WhatsApp
+
+Solo el mensaje, sin explicaciones adicionales.`}]})
+    });
+    const data = await res.json();
+    wappMensaje = data.content?.map(b=>b.text||"").join("\n").trim() || "Error.";
+    document.getElementById("wapp-text").textContent = wappMensaje;
+    const tel = (document.getElementById("wapp-tel").value || c.telefono || "").replace(/\D/g,"");
+    document.getElementById("btn-wapp-web").href = `https://wa.me/${tel}?text=${encodeURIComponent(wappMensaje)}`;
+  } catch { wappMensaje="Error de conexión."; document.getElementById("wapp-text").textContent=wappMensaje; }
+  document.getElementById("spin-wapp").style.display   = "none";
+  document.getElementById("wapp-result").style.display = "block";
+}
+
+function regenWapp() { if(selCliente) generarWapp(selCliente); }
+function copiarWapp() { navigator.clipboard.writeText(wappMensaje); }
+
+async function registrarContactoEnGoogle(c) {
+  if (!window._gToken || !c.fuenteG) return;
+  const hoy = new Date();
+  const dd = String(hoy.getDate()).padStart(2,"0");
+  const mm = String(hoy.getMonth()+1).padStart(2,"0");
+  const yyyy = hoy.getFullYear();
+  const fechaStr = `${dd}-${mm}-${yyyy}`;
+  const textoAccion = c.esIntermediario
+    ? "Envío email de seguimiento de proyectos donde poder ofertar"
+    : "Envío email de seguimiento de renovaciones";
+  const nuevaLinea = `\n${fechaStr}\n${textoAccion}`;
+  const notasActuales = c.historial && c.historial !== "Sin historial." ? c.historial : "";
+  const notasNuevas = notasActuales + nuevaLinea;
+  try {
+    await fetch(`https://people.googleapis.com/v1/${c.id}:updateContact?updatePersonFields=biographies`, {
+      method: "PATCH",
+      headers: { "Authorization": `Bearer ${window._gToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ biographies: [{ value: notasNuevas, contentType: "TEXT_PLAIN" }] })
+    });
+  } catch(e) { console.log("No se pudo actualizar nota en Google:", e.message); }
+}
+
+function abrirWappWeb() {
+  const tel = document.getElementById("wapp-tel").value.replace(/\D/g,"");
+  document.getElementById("btn-wapp-web").href = `https://wa.me/${tel}?text=${encodeURIComponent(wappMensaje)}`;
+}
+
+function marcarWappEnviado() {
+  if(!selCliente) return;
+  estado[selCliente.id] = { ...estado[selCliente.id], wappEnviado: true, ultimoContacto: new Date().toISOString().split("T")[0] };
+  clientes = clientes.map(c => c.id===selCliente.id ? {...c, ultimoContacto: new Date().toISOString().split("T")[0]} : c);
+  guardarEstado();
+  cerrarPanel();
+  renderLista();
+}
+
+async function enviarWappAPI() {
+  const token   = document.getElementById("waba-token").value.trim();
+  const phoneId = document.getElementById("waba-phone-id").value.trim();
+  const tel     = document.getElementById("wapp-tel").value.replace(/\D/g,"");
+  if (!token || !phoneId || !tel) { alert("Rellena el token, Phone Number ID y teléfono."); return; }
+  try {
+    const res = await fetch(`https://graph.facebook.com/v18.0/${phoneId}/messages`, {
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "Authorization":`Bearer ${token}` },
+      body: JSON.stringify({ messaging_product:"whatsapp", to: tel, type:"text", text:{ body: wappMensaje } })
+    });
+    const data = await res.json();
+    if (data.messages) {
+      alert("✅ WhatsApp enviado correctamente.");
+      marcarWappEnviado();
+    } else {
+      alert("Error: " + JSON.stringify(data.error || data));
+    }
+  } catch(e) { alert("Error de conexión: " + e.message); }
+}
+
+// ── GOOGLE AUTH ───────────────────────────────────────────────────────────────
+function conectarGoogle() {
+  const btn = document.getElementById("btn-google");
+  btn.disabled = true;
+  btn.innerHTML = `<div style="width:14px;height:14px;border:2px solid #ccc;border-top:2px solid #4285f4;border-radius:50%;animation:spin 0.8s linear infinite;display:inline-block;"></div> Conectando...`;
+  if (!window.google?.accounts) { setTimeout(conectarGoogle, 500); return; }
+  window.google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID, scope: GOOGLE_SCOPES,
+    callback: async (resp) => {
+      if (resp.error) { mostrarError("Error: "+resp.error); resetBtn(); return; }
+      try {
+        const me = await (await fetch("https://people.googleapis.com/v1/people/me?personFields=names,emailAddresses",{headers:{Authorization:`Bearer ${resp.access_token}`}})).json();
+        window._gToken = resp.access_token;
+        const nombre = me.names?.[0]?.displayName || me.emailAddresses?.[0]?.value || "Usuario Google";
+        // Cargar grupos para obtener nombres de etiquetas
+        const grRes = await (await fetch("https://people.googleapis.com/v1/contactGroups?pageSize=200",{headers:{Authorization:`Bearer ${resp.access_token}`}})).json();
+        const gruposMap = {};
+        (grRes.contactGroups||[]).forEach(g => { gruposMap[g.resourceName] = g.name; });
+        window._gruposMap = gruposMap;
+
+        const url = "https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses,phoneNumbers,organizations,biographies,metadata,memberships&pageSize=100&sortOrder=LAST_MODIFIED_ASCENDING";
+        const cr  = await (await fetch(url,{headers:{Authorization:`Bearer ${resp.access_token}`}})).json();
+
+        // Filtrar contactos en grupos con "(NO EMAILS COMERCIALES)"
+        const contactos = (cr.connections||[])
+          .filter(p => {
+            const membs = p.memberships || [];
+            return !membs.some(m => {
+              const nombre = gruposMap[m.contactGroupMembership?.contactGroupResourceName] || "";
+              return nombre.toUpperCase().includes("NO EMAILS COMERCIALES");
+            });
+          })
+          .map(mapContact);
+        clientes = contactos.length > 0 ? contactos : [...DEMO];
+        if (!contactos.length) mostrarError("No se encontraron contactos. Mostrando demo.");
+
+        // Detectar automáticamente clientes con email enviado hace 2+ días sin respuesta
+        const hoyMs = Date.now();
+        clientes.forEach(c => {
+          if (!c.fuenteG || !c.historial) return;
+          const lineas = c.historial.split("\n");
+          // Buscar última línea de "Envío email de seguimiento"
+          let fechaEmail = null, idxEmail = -1;
+          lineas.forEach((l, i) => {
+            if (l.includes("Envío email de seguimiento")) {
+              // La fecha está en la línea anterior
+              const lFecha = lineas[i-1] || "";
+              const mF = lFecha.match(/(\d{1,2})-(\d{1,2})-(\d{4})/);
+              if (mF) {
+                const ts = new Date(`${mF[3]}-${mF[2].padStart(2,"0")}-${mF[1].padStart(2,"0")}`).getTime();
+                if (!isNaN(ts) && ts > (fechaEmail||0)) { fechaEmail = ts; idxEmail = i; }
+              }
+            }
+          });
+          if (!fechaEmail) return;
+          const diasTranscurridos = (hoyMs - fechaEmail) / 86400000;
+          if (diasTranscurridos < 2) return;
+          // Comprobar si hay alguna línea POSTERIOR al email que indique actividad
+          const hayRespuesta = lineas.slice(idxEmail+1).some(l => l.trim().length > 3);
+          if (!hayRespuesta && !estado[c.id]?.wappEnviado) {
+            // Activar WhatsApp pendiente usando el timestamp del email
+            if (!estado[c.id]?.emailEnviadoEn) {
+              estado[c.id] = { ...estado[c.id], emailEnviadoEn: fechaEmail };
+              guardarEstado();
+            }
+          }
+        });
+        document.getElementById("btn-google").style.display="none";
+        document.getElementById("user-badge").style.display="flex";
+        document.getElementById("user-name").textContent=nombre;
+        document.getElementById("dot-status").style.background="#34a853";
+        document.getElementById("info-text").innerHTML=`<strong style="color:#e8eaf0">${clientes.length} contactos</strong> cargados desde Google Contacts`;
+        renderLista();
+      } catch(e) { mostrarError("Error: "+e.message); resetBtn(); }
+    }
+  }).requestAccessToken();
+}
+
+function parseFechaES(d, m, y) {
+  return new Date(`${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`);
+}
+
+function extraerFechas(texto) {
+  const regex = /\b(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4})\b/g;
+  let match, ultima = null, ultimaTs = 0;
+  while ((match = regex.exec(texto)) !== null) {
+    const [_, d, m, y] = match;
+    const ts = parseFechaES(d, m, y).getTime();
+    if (!isNaN(ts) && ts > ultimaTs) { ultimaTs = ts; ultima = `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`; }
+  }
+  return ultima;
+}
+
+function extraerProximaAccion(texto) {
+  // Detecta "fecha proxima accion: DD-MM-YYYY" o "fecha proxima accion DD-MM-YYYY" con o sin ceros
+  const regex = /fecha\s+pr[oó]xima\s+acci[oó]n[:\s]+\s*(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4})/i;
+  const m = texto.match(regex);
+  if (!m) return null;
+  const fecha = `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+  return isNaN(new Date(fecha).getTime()) ? null : fecha;
+}
+
+function mapContact(p) {
+  const notas=p.biographies?.[0]?.value||"";
+  const sM=notas.match(/sector[:\s]+([^\n,]+)/i);
+  const eM=notas.match(/equipos?[:\s]+([^\n]+)/i);
+  const fechaNotas    = extraerFechas(notas);
+  const proximaAccion = extraerProximaAccion(notas);
+  const ultimoContacto = fechaNotas || "2020-01-01";
+  // Recoger etiquetas del contacto
+  const etiquetas = (p.memberships||[]).map(m => (window._gruposMap||{})[m.contactGroupMembership?.contactGroupResourceName]||"").filter(Boolean);
+  const esClienteFinal = etiquetas.some(e => e.toUpperCase().includes("CLIENTE FINAL"));
+  const esIntermediario = etiquetas.some(e =>
+    e.toUpperCase().includes("CARROCERO") ||
+    e.toUpperCase().includes("RENTING") ||
+    e.toUpperCase().includes("SERVICIO OFICIAL") ||
+    e.toUpperCase().includes("INTERMEDIARIO")
+  );
+  return { id:p.resourceName||Math.random().toString(36).slice(2), empresa:p.organizations?.[0]?.name||"Empresa desconocida", contacto:p.names?.[0]?.displayName||"Sin nombre", cargo:p.organizations?.[0]?.title||"", email:p.emailAddresses?.[0]?.value||"", telefono:p.phoneNumbers?.[0]?.value||"", sector:sM?sM[1].trim():"Ver notas", equipos:eM?eM[1].trim():"Ver notas", ultimoContacto, proximaAccion: proximaAccion||null, historial:notas||"Sin historial.", etiquetas, esClienteFinal, esIntermediario, fuenteG:true };
+}
+
+function mostrarError(msg) {
+  document.getElementById("error-inner").textContent=msg;
+  document.getElementById("error-box").style.display="block";
+  setTimeout(()=>document.getElementById("error-box").style.display="none",8000);
+}
+function resetBtn() {
+  const btn=document.getElementById("btn-google");
+  btn.disabled=false;
+  btn.innerHTML=`${gSvg(16)} Conectar Google Contacts`;
+}
+
+renderLista();
+</script>
+</body>
+</html>
