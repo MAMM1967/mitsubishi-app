@@ -630,9 +630,7 @@ function conectarGoogle() {
     callback: async (resp) => {
       if (resp.error) { mostrarError("Error: "+resp.error); resetBtn(); return; }
       try {
-        const me = await (await fetch("https://people.googleapis.com/v1/people/me?personFields=names,emailAddresses",{headers:{Authorization:`Bearer ${resp.access_token}`}})).json();
         window._gToken = resp.access_token;
-        const nombre = me.names?.[0]?.displayName || me.emailAddresses?.[0]?.value || "Usuario Google";
         // Cargar grupos para obtener nombres de etiquetas
         const grRes = await (await fetch("https://people.googleapis.com/v1/contactGroups?pageSize=200",{headers:{Authorization:`Bearer ${resp.access_token}`}})).json();
         const gruposMap = {};
@@ -714,9 +712,10 @@ function conectarGoogle() {
         clientes = seleccionados.length > 0 ? seleccionados : [...DEMO];
         if (!seleccionados.length) mostrarError("No se encontraron contactos. Mostrando demo.");
         document.getElementById("info-text").innerHTML=`<strong style="color:#e8eaf0">${clientes.length} contactos</strong> seleccionados de ${filtrados.length} cargados`;
+        const nombre = clientes[0]?.contacto || "Conectado";
         document.getElementById("btn-google").style.display="none";
         document.getElementById("user-badge").style.display="flex";
-        document.getElementById("user-name").textContent=nombre;
+        document.getElementById("user-name").textContent="Google Contacts";
         document.getElementById("dot-status").style.background="#34a853";
         document.getElementById("info-text").innerHTML=`<strong style="color:#e8eaf0">${clientes.length} contactos</strong> cargados desde Google Contacts`;
         renderLista();
