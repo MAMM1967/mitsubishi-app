@@ -711,13 +711,11 @@ function conectarGoogle() {
 
         clientes = seleccionados.length > 0 ? seleccionados : [...DEMO];
         if (!seleccionados.length) mostrarError("No se encontraron contactos. Mostrando demo.");
-        document.getElementById("info-text").innerHTML=`<strong style="color:#e8eaf0">${clientes.length} contactos</strong> seleccionados de ${filtrados.length} cargados`;
-        const nombre = clientes[0]?.contacto || "Conectado";
         document.getElementById("btn-google").style.display="none";
         document.getElementById("user-badge").style.display="flex";
         document.getElementById("user-name").textContent="Google Contacts";
         document.getElementById("dot-status").style.background="#34a853";
-        document.getElementById("info-text").innerHTML=`<strong style="color:#e8eaf0">${clientes.length} contactos</strong> cargados desde Google Contacts`;
+        document.getElementById("info-text").innerHTML=`<strong style="color:#e8eaf0">${clientes.length} contactos</strong> seleccionados de ${filtrados.length} cargados`;
         renderLista();
       } catch(e) { mostrarError("Error: "+e.message); resetBtn(); }
     }
