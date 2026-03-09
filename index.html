@@ -549,7 +549,11 @@ async function registrarContactoEnGoogle(c) {
   const textoAccion = c.esIntermediario
     ? "Envío email de seguimiento de proyectos donde poder ofertar"
     : "Envío email de seguimiento de renovaciones";
-  const nuevaLinea = `\n${fechaStr}\n${textoAccion}`;
+  const wappFecha = new Date(); wappFecha.setDate(wappFecha.getDate() + 2);
+  const wdd = String(wappFecha.getDate()).padStart(2,"0");
+  const wmm = String(wappFecha.getMonth()+1).padStart(2,"0");
+  const wyyyy = wappFecha.getFullYear();
+  const nuevaLinea = `\n${fechaStr}\n${textoAccion}\nWapp previsto: ${wdd}-${wmm}-${wyyyy}`;
   try {
     // Primero obtenemos el contacto actual con su etag (obligatorio para actualizar)
     const getRes = await fetch(
@@ -635,32 +639,36 @@ function conectarGoogle() {
         (grRes.contactGroups||[]).forEach(g => { gruposMap[g.resourceName] = g.name; });
         window._gruposMap = gruposMap;
 
-        const url = "https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses,phoneNumbers,organizations,biographies,metadata,memberships&pageSize=100&sortOrder=LAST_MODIFIED_ASCENDING";
-        const cr  = await (await fetch(url,{headers:{Authorization:`Bearer ${resp.access_token}`}})).json();
+        // Cargar 500 contactos en 10 páginas de 50
+        let todosContactos = [];
+        let nextPageToken = null;
+        let paginas = 0;
+        do {
+          const pageUrl = "https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses,phoneNumbers,organizations,biographies,metadata,memberships&pageSize=50"
+            + (nextPageToken ? `&pageToken=${nextPageToken}` : "");
+          const cr = await (await fetch(pageUrl, {headers:{Authorization:`Bearer ${resp.access_token}`}})).json();
+          todosContactos = todosContactos.concat(cr.connections || []);
+          nextPageToken = cr.nextPageToken || null;
+          paginas++;
+        } while (nextPageToken && paginas < 10);
 
-        // Filtrar contactos en grupos con "(NO EMAILS COMERCIALES)"
-        const contactos = (cr.connections||[])
-          .filter(p => {
-            const membs = p.memberships || [];
-            return !membs.some(m => {
-              const nombre = gruposMap[m.contactGroupMembership?.contactGroupResourceName] || "";
-              return nombre.toUpperCase().includes("NO EMAILS COMERCIALES");
-            });
-          })
-          .map(mapContact);
-        clientes = contactos.length > 0 ? contactos : [...DEMO];
-        if (!contactos.length) mostrarError("No se encontraron contactos. Mostrando demo.");
+        // Filtrar los de NO EMAILS COMERCIALES
+        const filtrados = todosContactos.filter(p => {
+          const membs = p.memberships || [];
+          return !membs.some(m => {
+            const n = gruposMap[m.contactGroupMembership?.contactGroupResourceName] || "";
+            return n.toUpperCase().includes("NO EMAILS COMERCIALES");
+          });
+        }).map(mapContact);
 
-        // Detectar automáticamente clientes con email enviado hace 2+ días sin respuesta
+        // Detectar WhatsApp pendiente desde notas
         const hoyMs = Date.now();
-        clientes.forEach(c => {
+        filtrados.forEach(c => {
           if (!c.fuenteG || !c.historial) return;
           const lineas = c.historial.split("\n");
-          // Buscar última línea de "Envío email de seguimiento"
           let fechaEmail = null, idxEmail = -1;
           lineas.forEach((l, i) => {
             if (l.includes("Envío email de seguimiento")) {
-              // La fecha está en la línea anterior
               const lFecha = lineas[i-1] || "";
               const mF = lFecha.match(/(\d{1,2})-(\d{1,2})-(\d{4})/);
               if (mF) {
@@ -672,16 +680,40 @@ function conectarGoogle() {
           if (!fechaEmail) return;
           const diasTranscurridos = (hoyMs - fechaEmail) / 86400000;
           if (diasTranscurridos < 2) return;
-          // Comprobar si hay alguna línea POSTERIOR al email que indique actividad
           const hayRespuesta = lineas.slice(idxEmail+1).some(l => l.trim().length > 3);
           if (!hayRespuesta && !estado[c.id]?.wappEnviado) {
-            // Activar WhatsApp pendiente usando el timestamp del email
             if (!estado[c.id]?.emailEnviadoEn) {
               estado[c.id] = { ...estado[c.id], emailEnviadoEn: fechaEmail };
               guardarEstado();
             }
           }
         });
+
+        // Ordenar y seleccionar los 100 más relevantes
+        const hoy0 = new Date(); hoy0.setHours(0,0,0,0);
+        const seleccionados = filtrados
+          .filter(c => !estaPostpuesto(c.id))
+          .sort((a, b) => {
+            // 1. Próxima acción vencida o hoy
+            const aPA = a.proximaAccion && new Date(a.proximaAccion) <= hoy0 ? 1 : 0;
+            const bPA = b.proximaAccion && new Date(b.proximaAccion) <= hoy0 ? 1 : 0;
+            if (bPA !== aPA) return bPA - aPA;
+            // 2. WhatsApp pendiente
+            const aW = necesitaWapp(a.id) ? 1 : 0;
+            const bW = necesitaWapp(b.id) ? 1 : 0;
+            if (bW !== aW) return bW - aW;
+            // 3. Próxima acción futura más próxima
+            const aFut = a.proximaAccion && new Date(a.proximaAccion) > hoy0 ? new Date(a.proximaAccion).getTime() : Infinity;
+            const bFut = b.proximaAccion && new Date(b.proximaAccion) > hoy0 ? new Date(b.proximaAccion).getTime() : Infinity;
+            if (aFut !== bFut) return aFut - bFut;
+            // 4. Más días sin contacto
+            return dias(b.ultimoContacto) - dias(a.ultimoContacto);
+          })
+          .slice(0, 100);
+
+        clientes = seleccionados.length > 0 ? seleccionados : [...DEMO];
+        if (!seleccionados.length) mostrarError("No se encontraron contactos. Mostrando demo.");
+        document.getElementById("info-text").innerHTML=`<strong style="color:#e8eaf0">${clientes.length} contactos</strong> seleccionados de ${filtrados.length} cargados`;
         document.getElementById("btn-google").style.display="none";
         document.getElementById("user-badge").style.display="flex";
         document.getElementById("user-name").textContent=nombre;
