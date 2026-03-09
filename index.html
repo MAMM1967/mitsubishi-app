@@ -548,14 +548,33 @@ async function registrarContactoEnGoogle(c) {
     ? "Envío email de seguimiento de proyectos donde poder ofertar"
     : "Envío email de seguimiento de renovaciones";
   const nuevaLinea = `\n${fechaStr}\n${textoAccion}`;
-  const notasActuales = c.historial && c.historial !== "Sin historial." ? c.historial : "";
-  const notasNuevas = notasActuales + nuevaLinea;
   try {
-    await fetch(`https://people.googleapis.com/v1/${c.id}:updateContact?updatePersonFields=biographies`, {
-      method: "PATCH",
-      headers: { "Authorization": `Bearer ${window._gToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ biographies: [{ value: notasNuevas, contentType: "TEXT_PLAIN" }] })
-    });
+    // Primero obtenemos el contacto actual con su etag (obligatorio para actualizar)
+    const getRes = await fetch(
+      `https://people.googleapis.com/v1/${c.id}?personFields=biographies,metadata`,
+      { headers: { "Authorization": `Bearer ${window._gToken}` } }
+    );
+    if (!getRes.ok) { console.log("Error obteniendo contacto:", getRes.status); return; }
+    const contactData = await getRes.json();
+    const etag = contactData.etag;
+    const notasActuales = contactData.biographies?.[0]?.value || "";
+    const notasNuevas = notasActuales + nuevaLinea;
+
+    // Actualizamos con el etag correcto
+    const updateRes = await fetch(
+      `https://people.googleapis.com/v1/${c.id}:updateContact?updatePersonFields=biographies`,
+      {
+        method: "PATCH",
+        headers: { "Authorization": `Bearer ${window._gToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ etag, biographies: [{ value: notasNuevas, contentType: "TEXT_PLAIN" }] })
+      }
+    );
+    if (!updateRes.ok) {
+      const err = await updateRes.json();
+      console.log("Error actualizando contacto:", err);
+    } else {
+      console.log("Nota registrada en Google Contacts OK");
+    }
   } catch(e) { console.log("No se pudo actualizar nota en Google:", e.message); }
 }
 
