@@ -570,30 +570,56 @@ Responde ÚNICAMENTE con la fecha en formato DD-MM-YYYY, sin explicación.`
   return `${String(fallback.getDate()).padStart(2,"0")}-${String(fallback.getMonth()+1).padStart(2,"0")}-${fallback.getFullYear()}`;
 }
 
-// Actualiza las notas de un contacto en Google con texto nuevo
+// Renueva el token de Google silenciosamente
+async function renovarTokenGoogle() {
+  return new Promise((resolve) => {
+    if (!window.google?.accounts) { resolve(false); return; }
+    window.google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID, scope: GOOGLE_SCOPES,
+      prompt: "",  // sin pantalla de login si ya está autorizado
+      callback: (resp) => {
+        if (resp.error) { resolve(false); return; }
+        window._gToken = resp.access_token;
+        resolve(true);
+      }
+    }).requestAccessToken();
+  });
+}
+
+// Actualiza las notas de un contacto en Google con texto nuevo (con reintento si expira el token)
 async function actualizarNotasGoogle(contactoId, nuevaLinea) {
   if (!window._gToken) return;
-  try {
-    const getRes = await fetch(
-      `https://people.googleapis.com/v1/${contactoId}?personFields=biographies,metadata`,
-      { headers: { "Authorization": `Bearer ${window._gToken}` } }
-    );
-    if (!getRes.ok) { console.log("Error obteniendo contacto:", getRes.status); return; }
-    const contactData = await getRes.json();
-    const etag = contactData.etag;
-    const notasActuales = contactData.biographies?.[0]?.value || "";
-    const notasNuevas = notasActuales + nuevaLinea;
-    const updateRes = await fetch(
-      `https://people.googleapis.com/v1/${contactoId}:updateContact?updatePersonFields=biographies`,
-      {
-        method: "PATCH",
-        headers: { "Authorization": `Bearer ${window._gToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ etag, biographies: [{ value: notasNuevas, contentType: "TEXT_PLAIN" }] })
+  for (let intento = 0; intento < 2; intento++) {
+    try {
+      const getRes = await fetch(
+        `https://people.googleapis.com/v1/${contactoId}?personFields=biographies,metadata`,
+        { headers: { "Authorization": `Bearer ${window._gToken}` } }
+      );
+      if (getRes.status === 401) {
+        // Token expirado — renovar y reintentar
+        console.log("Token expirado, renovando...");
+        const ok = await renovarTokenGoogle();
+        if (!ok) { console.log("No se pudo renovar el token"); return; }
+        continue;
       }
-    );
-    if (updateRes.ok) console.log("Notas actualizadas en Google Contacts OK");
-    else console.log("Error actualizando:", await updateRes.json());
-  } catch(e) { console.log("No se pudo actualizar nota en Google:", e.message); }
+      if (!getRes.ok) { console.log("Error obteniendo contacto:", getRes.status); return; }
+      const contactData = await getRes.json();
+      const etag = contactData.etag;
+      const notasActuales = contactData.biographies?.[0]?.value || "";
+      const notasNuevas = notasActuales + nuevaLinea;
+      const updateRes = await fetch(
+        `https://people.googleapis.com/v1/${contactoId}:updateContact?updatePersonFields=biographies`,
+        {
+          method: "PATCH",
+          headers: { "Authorization": `Bearer ${window._gToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ etag, biographies: [{ value: notasNuevas, contentType: "TEXT_PLAIN" }] })
+        }
+      );
+      if (updateRes.ok) { console.log("Notas actualizadas en Google Contacts OK"); return; }
+      else console.log("Error actualizando:", await updateRes.json());
+      return;
+    } catch(e) { console.log("No se pudo actualizar nota en Google:", e.message); return; }
+  }
 }
 
 async function registrarContactoEnGoogle(c) {
