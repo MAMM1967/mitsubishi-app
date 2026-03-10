@@ -530,6 +530,72 @@ Solo el mensaje, sin explicaciones adicionales.`}]})
 function regenWapp() { if(selCliente) generarWapp(selCliente); }
 function copiarWapp() { navigator.clipboard.writeText(wappMensaje); }
 
+// Calcula fecha de próxima acción con IA basándose en las notas
+async function calcularProximaAccionIA(notas, tipoContacto, esWapp) {
+  const hoy = new Date();
+  const dd = String(hoy.getDate()).padStart(2,"0");
+  const mm = String(hoy.getMonth()+1).padStart(2,"0");
+  const yyyy = hoy.getFullYear();
+  try {
+    const res = await fetch("https://damp-limit-0374.mezquiriz.workers.dev", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514", max_tokens: 100,
+        messages: [{ role: "user", content:
+`Eres un asistente comercial. Analiza las notas de este contacto y determina la fecha de próxima acción comercial.
+
+NOTAS DEL CONTACTO:
+${notas}
+
+CONTEXTO: Hoy es ${dd}-${mm}-${yyyy}. Acabamos de enviar ${esWapp ? "un WhatsApp" : "un email"} de seguimiento.
+TIPO DE CLIENTE: ${tipoContacto}
+
+REGLAS:
+- Si hay una oferta pendiente, negociación activa o el cliente mostró interés reciente → 2 días hábiles desde hoy
+- Si hay que hacer seguimiento concreto (llamada, visita, propuesta) → estima el plazo razonable (días o semanas)
+- Si el cliente no responde o no hay nada urgente → 3 meses desde hoy
+- Evita fines de semana (sábado y domingo)
+
+Responde ÚNICAMENTE con la fecha en formato DD-MM-YYYY, sin explicación.`
+        }]
+      })
+    });
+    const data = await res.json();
+    const txt = data.content?.map(b => b.text || "").join("").trim();
+    // Validar que es una fecha en formato DD-MM-YYYY
+    if (/^\d{1,2}-\d{1,2}-\d{4}$/.test(txt)) return txt;
+  } catch(e) { console.log("Error calculando próxima acción:", e.message); }
+  // Fallback: 3 meses
+  const fallback = new Date(); fallback.setMonth(fallback.getMonth() + 3);
+  return `${String(fallback.getDate()).padStart(2,"0")}-${String(fallback.getMonth()+1).padStart(2,"0")}-${fallback.getFullYear()}`;
+}
+
+// Actualiza las notas de un contacto en Google con texto nuevo
+async function actualizarNotasGoogle(contactoId, nuevaLinea) {
+  if (!window._gToken) return;
+  try {
+    const getRes = await fetch(
+      `https://people.googleapis.com/v1/${contactoId}?personFields=biographies,metadata`,
+      { headers: { "Authorization": `Bearer ${window._gToken}` } }
+    );
+    if (!getRes.ok) { console.log("Error obteniendo contacto:", getRes.status); return; }
+    const contactData = await getRes.json();
+    const etag = contactData.etag;
+    const notasActuales = contactData.biographies?.[0]?.value || "";
+    const notasNuevas = notasActuales + nuevaLinea;
+    const updateRes = await fetch(
+      `https://people.googleapis.com/v1/${contactoId}:updateContact?updatePersonFields=biographies`,
+      {
+        method: "PATCH",
+        headers: { "Authorization": `Bearer ${window._gToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ etag, biographies: [{ value: notasNuevas, contentType: "TEXT_PLAIN" }] })
+      }
+    );
+    if (updateRes.ok) console.log("Notas actualizadas en Google Contacts OK");
+    else console.log("Error actualizando:", await updateRes.json());
+  } catch(e) { console.log("No se pudo actualizar nota en Google:", e.message); }
+}
+
 async function registrarContactoEnGoogle(c) {
   if (!window._gToken || !c.fuenteG) return;
   const hoy = new Date();
@@ -540,45 +606,16 @@ async function registrarContactoEnGoogle(c) {
   const textoAccion = c.esIntermediario
     ? "Envío email de seguimiento de proyectos donde poder ofertar"
     : "Envío email de seguimiento de renovaciones";
-  const wappFecha = new Date(); wappFecha.setDate(wappFecha.getDate() + 2);
-  const wdd = String(wappFecha.getDate()).padStart(2,"0");
-  const wmm = String(wappFecha.getMonth()+1).padStart(2,"0");
-  const wyyyy = wappFecha.getFullYear();
-  const nuevaLinea = `\n${fechaStr}\n${textoAccion}\nWapp previsto: ${wdd}-${wmm}-${wyyyy}`;
-  try {
-    // Primero obtenemos el contacto actual con su etag (obligatorio para actualizar)
-    const getRes = await fetch(
-      `https://people.googleapis.com/v1/${c.id}?personFields=biographies,metadata`,
-      { headers: { "Authorization": `Bearer ${window._gToken}` } }
-    );
-    if (!getRes.ok) { console.log("Error obteniendo contacto:", getRes.status); return; }
-    const contactData = await getRes.json();
-    const etag = contactData.etag;
-    const notasActuales = contactData.biographies?.[0]?.value || "";
-    const notasNuevas = notasActuales + nuevaLinea;
-
-    // Actualizamos con el etag correcto
-    const updateRes = await fetch(
-      `https://people.googleapis.com/v1/${c.id}:updateContact?updatePersonFields=biographies`,
-      {
-        method: "PATCH",
-        headers: { "Authorization": `Bearer ${window._gToken}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ etag, biographies: [{ value: notasNuevas, contentType: "TEXT_PLAIN" }] })
-      }
-    );
-    if (!updateRes.ok) {
-      const err = await updateRes.json();
-      console.log("Error actualizando contacto:", err);
-    } else {
-      console.log("Nota registrada en Google Contacts OK");
-    }
-  } catch(e) { console.log("No se pudo actualizar nota en Google:", e.message); }
+  const tipoCliente = c.esClienteFinal ? "Cliente final con flota propia" : c.esIntermediario ? "Intermediario (carrocero/renting/servicio oficial)" : "General";
+  // Calcular próxima acción con IA
+  const fechaProxima = await calcularProximaAccionIA(c.historial, tipoCliente, false);
+  const nuevaLinea = `\n${fechaStr}\n${textoAccion}\nPróxima acción llamarle en ${fechaProxima}`;
+  await actualizarNotasGoogle(c.id, nuevaLinea);
 }
 
 function abrirWappWeb() {
   const tel = document.getElementById("wapp-tel").value.replace(/\D/g,"");
   document.getElementById("btn-wapp-web").href = `https://wa.me/${tel}?text=${encodeURIComponent(wappMensaje)}`;
-  // Auto-marcar como enviado y registrar en Google Contacts
   setTimeout(() => {
     registrarWappEnGoogle();
     marcarWappEnviado();
@@ -595,22 +632,11 @@ async function registrarWappEnGoogle() {
   const textoWapp = selCliente.esIntermediario
     ? "Envío WhatsApp de seguimiento de proyectos donde poder ofertar"
     : "Envío WhatsApp de seguimiento de renovaciones";
-  const nuevaLinea = `\n${fechaStr}\n${textoWapp}`;
-  try {
-    const getRes = await fetch(`https://people.googleapis.com/v1/${selCliente.id}?personFields=biographies,metadata`,
-      { headers: { "Authorization": `Bearer ${window._gToken}` } });
-    if (!getRes.ok) return;
-    const contactData = await getRes.json();
-    const etag = contactData.etag;
-    const notasActuales = contactData.biographies?.[0]?.value || "";
-    const notasNuevas = notasActuales + nuevaLinea;
-    await fetch(`https://people.googleapis.com/v1/${selCliente.id}:updateContact?updatePersonFields=biographies`, {
-      method: "PATCH",
-      headers: { "Authorization": `Bearer ${window._gToken}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ etag, biographies: [{ value: notasNuevas, contentType: "TEXT_PLAIN" }] })
-    });
-    console.log("WhatsApp registrado en Google Contacts OK");
-  } catch(e) { console.log("Error registrando WhatsApp:", e.message); }
+  const tipoCliente = selCliente.esClienteFinal ? "Cliente final con flota propia" : selCliente.esIntermediario ? "Intermediario" : "General";
+  // Si el cliente no respondió al email → 3 meses por defecto, si hay contexto → IA decide
+  const fechaProxima = await calcularProximaAccionIA(selCliente.historial, tipoCliente, true);
+  const nuevaLinea = `\n${fechaStr}\n${textoWapp}\nPróxima acción llamarle en ${fechaProxima}`;
+  await actualizarNotasGoogle(selCliente.id, nuevaLinea);
 }
 
 function marcarWappEnviado() {
@@ -745,18 +771,19 @@ function extraerFechas(texto) {
 }
 
 function extraerProximaAccion(texto) {
-  // Detecta cualquier línea con "próxima" y "acción" (con/sin acento) y una fecha en esa línea
+  // Detecta todas las líneas con "próxima" y "acción" y devuelve la ÚLTIMA (más reciente)
   const lineas = texto.split("\n");
+  let ultimaFecha = null;
   for (const linea of lineas) {
     if (/pr[oó]xima/i.test(linea) && /acci[oó]n/i.test(linea)) {
       const mF = linea.match(/(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4})/);
       if (mF) {
         const fecha = `${mF[3]}-${mF[2].padStart(2,"0")}-${mF[1].padStart(2,"0")}`;
-        if (!isNaN(new Date(fecha).getTime())) return fecha;
+        if (!isNaN(new Date(fecha).getTime())) ultimaFecha = fecha;
       }
     }
   }
-  return null;
+  return ultimaFecha;
 }
 
 function mapContact(p) {
