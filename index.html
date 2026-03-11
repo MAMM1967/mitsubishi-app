@@ -314,12 +314,18 @@ function ultimaAccion(historial) {
   if (ultimaFechaIdx === -1) return null;
 
   // Recoger TODAS las líneas del último bloque:
-  // - ignorar la línea de fecha inicial
-  // - ignorar líneas de sistema (envío email, wapp, próxima acción con fecha)
-  // - NO cortar por más fechas intermedias (pueden ser fechas dentro del texto)
+  // - ignorar la línea de fecha inicial (que es solo una fecha)
+  // - ignorar líneas puramente de sistema app (envío email/wapp, wapp previsto)
+  // - NO filtrar "próxima acción" del texto — puede ser texto tuyo
+  // - NO cortar por fechas intermedias dentro del texto
+  const esLineaPuraApp = l =>
+    /^envío email/i.test(l) ||
+    /^envío whatsapp/i.test(l) ||
+    /^wapp previsto/i.test(l);
+
   const textoBloque = lineas
     .slice(ultimaFechaIdx + 1)
-    .filter(l => !esSoloFecha(l) && !esLineaSistema(l))
+    .filter(l => !esSoloFecha(l) && !esLineaPuraApp(l))
     .join(" ")
     .trim();
 
@@ -548,14 +554,24 @@ function marcarEmailEnviado() {
 function posponerDesdeCard(id) {
   selCliente = clientes.find(c => c.id === id);
   renderLista();
-  abrirPanel(selCliente, "email");
-  // Ocultar spinner y resultado, mostrar solo opciones de posponer
+  // Abrir panel manualmente sin generar email
+  document.getElementById("panel").classList.add("visible");
+  document.getElementById("main").classList.add("with-panel");
+  document.getElementById("panel-empresa").textContent = selCliente.empresa;
+  document.getElementById("dest-grid").innerHTML = `
+    <span class="dest-label">Para:</span><span class="dest-name">${selCliente.contacto}</span>
+    ${selCliente.cargo ? `<span class="dest-label">Cargo:</span><span style="color:#9ca3af">${selCliente.cargo}</span>` : ""}
+  `;
+  document.getElementById("proxima-alert").style.display = "none";
+  // Resetear contenido del panel
   document.getElementById("spin-email").style.display = "none";
   document.getElementById("email-result").style.display = "none";
-  document.getElementById("posponer-row").style.display = "none";
-  // Mostrar botón posponer expandido directamente
-  const row = document.getElementById("posponer-row");
-  row.style.display = "flex";
+  document.getElementById("spin-wapp").style.display = "none";
+  document.getElementById("wapp-result").style.display = "none";
+  document.getElementById("wapp-activo").style.display = "none";
+  // Mostrar tab email con solo el botón posponer expandido
+  switchTab("email");
+  document.getElementById("posponer-row").style.display = "flex";
 }
 
 function togglePosponer() {
