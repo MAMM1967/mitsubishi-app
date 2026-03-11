@@ -293,25 +293,33 @@ function necesitaWapp(id) {
 
 function ultimaAccion(historial) {
   if (!historial || historial === "Sin historial.") return null;
-  const esLineasistema = l => /^envío email/i.test(l) || /^envío whatsapp/i.test(l) || /^wapp previsto/i.test(l) || /^pr[oó]xima.+acci[oó]n.+\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{4}/i.test(l);
-  const fechaRegex = /(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4})/g;
 
-  // Insertar salto de línea antes de cada fecha para separar bloques aunque estén pegados
-  const textoNormalizado = historial.replace(/(\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{4})/g, "\n$1\n");
+  // Normalizar: insertar saltos SOLO antes de fechas al inicio de línea o pegadas sin letras antes
+  // Evitar partir fechas que aparecen en medio de texto (ej: "llamarle el 1-03-2026 y...")
+  const textoNormalizado = historial.replace(/(^|\n|\r)(\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{4})/gm, "\n$2\n");
   const lineas = textoNormalizado.split("\n").map(l => l.trim()).filter(l => l.length > 0);
-  const esSoloFecha = l => /^(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4}):?$/.test(l);
 
-  // Encontrar el último bloque
+  const esSoloFecha = l => /^(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4}):?$/.test(l);
+  const esLineaSistema = l =>
+    /^envío email/i.test(l) ||
+    /^envío whatsapp/i.test(l) ||
+    /^wapp previsto/i.test(l) ||
+    /^pr[oó]xima.+acci[oó]n.+\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{4}/i.test(l);
+
+  // Encontrar el índice de la ÚLTIMA fecha que inicia un bloque
   let ultimaFechaIdx = -1;
   for (let i = lineas.length - 1; i >= 0; i--) {
     if (esSoloFecha(lineas[i])) { ultimaFechaIdx = i; break; }
   }
   if (ultimaFechaIdx === -1) return null;
 
-  // Coger todo el texto del último bloque sin líneas de sistema
+  // Recoger TODAS las líneas del último bloque:
+  // - ignorar la línea de fecha inicial
+  // - ignorar líneas de sistema (envío email, wapp, próxima acción con fecha)
+  // - NO cortar por más fechas intermedias (pueden ser fechas dentro del texto)
   const textoBloque = lineas
     .slice(ultimaFechaIdx + 1)
-    .filter(l => !esSoloFecha(l) && !esLineasistema(l))
+    .filter(l => !esSoloFecha(l) && !esLineaSistema(l))
     .join(" ")
     .trim();
 
