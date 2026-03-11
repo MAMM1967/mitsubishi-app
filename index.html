@@ -790,12 +790,19 @@ function parseFechaES(d, m, y) {
 }
 
 function extraerFechas(texto) {
-  const regex = /\b(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4})\b/g;
-  let match, ultima = null, ultimaTs = 0;
-  while ((match = regex.exec(texto)) !== null) {
-    const [_, d, m, y] = match;
-    const ts = parseFechaES(d, m, y).getTime();
-    if (!isNaN(ts) && ts > ultimaTs) { ultimaTs = ts; ultima = `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`; }
+  // Ignorar líneas con "próxima acción" — esas fechas son futuras, no de último contacto
+  const lineas = texto.split("\n");
+  let ultima = null, ultimaTs = 0;
+  for (const linea of lineas) {
+    if (/pr[oó]xima/i.test(linea) && /acci[oó]n/i.test(linea)) continue;
+    if (/wapp previsto/i.test(linea)) continue;
+    const regex = /\b(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4})\b/g;
+    let match;
+    while ((match = regex.exec(linea)) !== null) {
+      const [_, d, m, y] = match;
+      const ts = parseFechaES(d, m, y).getTime();
+      if (!isNaN(ts) && ts > ultimaTs) { ultimaTs = ts; ultima = `${y}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`; }
+    }
   }
   return ultima;
 }
