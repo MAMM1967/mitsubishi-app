@@ -384,6 +384,7 @@ function renderLista() {
               <span style="font-size:14px;font-weight:700;">${c.empresa}</span>
               <span class="badge badge-${p.label}">${p.label}</span>
               ${c.fuenteG ? `<span class="badge-google">${gSvg(9)} Google</span>` : ""}
+              ${c.linkedin ? `<span style="font-size:10px;color:#0a66c2;background:#0a1929;border:1px solid #0a66c244;padding:1px 6px;border-radius:7px;">💼 LinkedIn</span>` : ""}
               ${proximaAccionPendiente(c) ? `<span class="badge-proxima">📅 Acción hoy</span>` : c.proximaAccion && new Date(c.proximaAccion) > hoy ? `<span style="font-size:10px;color:#a78bfa;font-weight:600;">📅 ${fmt(c.proximaAccion)}</span>` : ""}
               ${nW ? `<span class="badge-wapp">💬 WhatsApp pendiente</span>` : ""}
               ${e.emailEnviadoEn && !nW && !e.wappEnviado && dsR !== null ? `<span style="font-size:10px;color:#ffaa00;">⏳ Email enviado hace ${dsR}d</span>` : ""}
@@ -406,7 +407,7 @@ function renderLista() {
             <div style="font-size:10px;color:#6b7280;margin-top:1px;">días</div>
             <div style="font-size:10px;color:#4b5563;margin-top:4px;">${fmt(c.ultimoContacto)}</div>
             <div style="margin-top:7px;font-size:11px;color:${nW?'#25d366':'#e63946'};font-weight:600;background:${nW?'#001a0d':'#1a0608'};border-radius:5px;padding:2px 8px;border:1px solid ${nW?'#25d36633':'#3d0d12'};">
-              ${nW ? "💬 Enviar WApp" : "✉ Email IA"}
+              ${nW ? "💬 Enviar WApp" : c.linkedin && !c.email ? "💼 LinkedIn" : "✉ Email IA"}
             </div>
           </div>
         </div>`;
@@ -416,11 +417,11 @@ function renderLista() {
 function clickCliente(id) {
   selCliente = clientes.find(c => c.id === id);
   renderLista();
-  // Si necesita WhatsApp, abrir directamente en pestaña WhatsApp
   const tab = necesitaWapp(id) ? "wapp" : "email";
   abrirPanel(selCliente, tab);
-  if (tab === "email") generarEmail(selCliente);
-  else generarWapp(selCliente);
+  if (tab === "wapp") generarWapp(selCliente);
+  else if (selCliente.linkedin && !selCliente.email) generarMensajeLinkedIn(selCliente);
+  else generarEmail(selCliente);
 }
 
 function abrirPanel(c, tab="email") {
@@ -432,6 +433,7 @@ function abrirPanel(c, tab="email") {
     ${c.cargo ? `<span class="dest-label">Cargo:</span><span style="color:#9ca3af">${c.cargo}</span>` : ""}
     <span class="dest-label">Email:</span> <span style="color:#60a5fa;">${c.email||"No disponible"}</span>
     ${c.telefono ? `<span class="dest-label">Tel:</span><span style="color:#9ca3af;">${c.telefono}</span>` : ""}
+    ${c.linkedin ? `<span class="dest-label">LinkedIn:</span><a href="${c.linkedin}" target="_blank" style="color:#0a66c2;font-size:12px;">💼 Ver perfil</a>` : ""}
   `;
   if (c.telefono) document.getElementById("wapp-tel").value = c.telefono;
 
@@ -673,6 +675,51 @@ Solo el mensaje, sin explicaciones adicionales.`}]})
 }
 
 function regenWapp() { if(selCliente) generarWapp(selCliente); }
+
+async function generarMensajeLinkedIn(c) {
+  document.getElementById("spin-email").style.display   = "block";
+  document.getElementById("email-result").style.display = "none";
+  const d = Math.floor((Date.now() - new Date(c.ultimoContacto)) / 86400000);
+  try {
+    const res = await fetch("https://damp-limit-0374.mezquiriz.workers.dev", {
+      method:"POST", headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:400,
+        messages:[{role:"user", content:
+`Eres el director comercial de Mitsubishi Equipos Frigoríficos para Transporte en España.
+
+CONTACTO:
+- Nombre: ${c.contacto}${c.cargo ? ` (${c.cargo})` : ""}
+- Empresa: ${c.empresa}
+- Sector: ${c.sector}
+- Último contacto: hace ${d} días
+- Historial: ${c.historial}
+
+TIPO: ${c.esClienteFinal ? "Cliente final con flota propia" : c.esIntermediario ? "Intermediario (carrocero/renting/servicio oficial)" : "General"}
+
+Redacta un mensaje de LinkedIn para retomar contacto. 
+- Tono: cercano y profesional, sin ser comercial agresivo
+- Máximo 4-5 líneas
+- ${c.esIntermediario ? "Pregunta si gestiona proyectos donde podamos colaborar con equipos frigoríficos" : "Pregunta si tienen previstas renovaciones o ampliaciones de flota"}
+- Sin saludos formales excesivos
+- Sin asteriscos ni formato especial
+
+Solo el mensaje, sin explicaciones.`}]})
+    });
+    const data = await res.json();
+    emailCuerpo = data.content?.map(b=>b.text||"").join("\n").trim() || "Error.";
+    emailAsunto = "Mensaje LinkedIn";
+    document.getElementById("asunto-text").textContent = "💼 Mensaje para LinkedIn";
+    document.getElementById("cuerpo-text").textContent = emailCuerpo;
+    // Cambiar botón para abrir LinkedIn
+    const btnEmail = document.getElementById("btn-abrir-email");
+    btnEmail.textContent = "💼 Abrir LinkedIn";
+    btnEmail.href = c.linkedin;
+    btnEmail.target = "_blank";
+    btnEmail.onclick = () => { navigator.clipboard.writeText(emailCuerpo); registrarContactoEnGoogle(c); marcarEmailEnviado(); };
+  } catch { emailCuerpo="Error de conexión."; document.getElementById("cuerpo-text").textContent=emailCuerpo; }
+  document.getElementById("spin-email").style.display   = "none";
+  document.getElementById("email-result").style.display = "block";
+}
 function copiarWapp() { navigator.clipboard.writeText(wappMensaje); }
 
 // Calcula fecha de próxima acción con IA basándose en las notas
@@ -844,7 +891,7 @@ function conectarGoogle() {
         let nextPageToken = null;
         let paginas = 0;
         do {
-          const pageUrl = "https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses,phoneNumbers,organizations,biographies,metadata,memberships&pageSize=1000"
+          const pageUrl = "https://people.googleapis.com/v1/people/me/connections?personFields=names,emailAddresses,phoneNumbers,organizations,biographies,metadata,memberships,urls&pageSize=1000"
             + (nextPageToken ? `&pageToken=${nextPageToken}` : "");
           const cr = await (await fetch(pageUrl, {headers:{Authorization:`Bearer ${resp.access_token}`}})).json();
           todosContactos = todosContactos.concat(cr.connections || []);
@@ -1006,7 +1053,8 @@ function mapContact(p) {
   const telefonos = p.phoneNumbers || [];
   const movil = telefonos.find(t => { const n = t.value.replace(/\D/g,""); return n.startsWith("6") || n.startsWith("7") || n.startsWith("346") || n.startsWith("347"); });
   const telefono = (movil || telefonos[0])?.value || "";
-  return { id:p.resourceName||Math.random().toString(36).slice(2), empresa:p.organizations?.[0]?.name||"Empresa desconocida", contacto:p.names?.[0]?.displayName||"Sin nombre", cargo:p.organizations?.[0]?.title||"", email:p.emailAddresses?.[0]?.value||"", telefono, sector:sM?sM[1].trim():"Ver notas", equipos:eM?eM[1].trim():"Ver notas", ultimoContacto, proximaAccion: proximaAccion||null, historial:notas||"Sin historial.", etiquetas, esClienteFinal, esIntermediario, fuenteG:true };
+  const linkedin = (p.urls||[]).find(u => u.value && u.value.includes("linkedin.com"))?.value || "";
+  return { id:p.resourceName||Math.random().toString(36).slice(2), empresa:p.organizations?.[0]?.name||"Empresa desconocida", contacto:p.names?.[0]?.displayName||"Sin nombre", cargo:p.organizations?.[0]?.title||"", email:p.emailAddresses?.[0]?.value||"", telefono, linkedin, sector:sM?sM[1].trim():"Ver notas", equipos:eM?eM[1].trim():"Ver notas", ultimoContacto, proximaAccion: proximaAccion||null, historial:notas||"Sin historial.", etiquetas, esClienteFinal, esIntermediario, fuenteG:true };
 }
 
 function mostrarError(msg) {
