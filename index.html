@@ -257,7 +257,11 @@ function renderLista() {
       const aw = necesitaWapp(a.id) ? 1 : 0;
       const bw = necesitaWapp(b.id) ? 1 : 0;
       if (bw !== aw) return bw - aw;
-      // 3. Por días sin contacto
+      // 3. Email recién enviado (menos de 2 días) → van al final, esperando respuesta
+      const aEspera = estado[a.id]?.emailEnviadoEn && !necesitaWapp(a.id) && !estado[a.id]?.wappEnviado ? 1 : 0;
+      const bEspera = estado[b.id]?.emailEnviadoEn && !necesitaWapp(b.id) && !estado[b.id]?.wappEnviado ? 1 : 0;
+      if (aEspera !== bEspera) return aEspera - bEspera; // los que esperan respuesta van al final
+      // 4. Por días sin contacto
       return dias(b.ultimoContacto) - dias(a.ultimoContacto);
     });
 
@@ -442,9 +446,8 @@ function copiarEmail() { navigator.clipboard.writeText(`Asunto: ${emailAsunto}\n
 function marcarEmailEnviado() {
   if(!selCliente) return;
   const id = selCliente.id;
-  // Actualizar fecha de último contacto a hoy
-  const hoy = new Date().toISOString().split("T")[0];
-  clientes = clientes.map(c => c.id===id ? {...c, ultimoContacto: hoy} : c);
+  // NO actualizamos ultimoContacto — solo marcamos que el email fue enviado
+  // ultimoContacto se actualiza cuando el cliente RESPONDE (marcarContactadoHoy)
   estado[id] = { ...estado[id], emailEnviadoEn: Date.now(), posponerHasta: null };
   guardarEstado();
   cerrarPanel();
