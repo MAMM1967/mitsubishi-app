@@ -166,7 +166,7 @@
               <button class="btn-posponer" onclick="posponer(30)">+1 mes</button>
               <button class="btn-posponer" onclick="posponer(90)">+3 meses</button>
               <button class="btn-posponer" onclick="posponerFecha()">📅 Fecha</button>
-              <input type="date" id="fecha-posponer" style="display:none;background:#111827;border:1px solid #374151;border-radius:6px;padding:4px 8px;color:#e8eaf0;font-size:11px;flex:2;" onchange="posponerFechaElegida()" />
+              <input type="text" id="fecha-posponer" placeholder="DD-MM-AAAA" style="display:none;background:#111827;border:1px solid #374151;border-radius:6px;padding:4px 8px;color:#e8eaf0;font-size:11px;flex:2;" /><button class="btn-posponer" onclick="posponerFechaElegida()" style="display:none;flex:0.5;" id="btn-fecha-ok">OK</button>
             </div>
           </div>
         </div>
@@ -219,11 +219,62 @@ let selCliente = null;
 let currentTab = "email";
 let emailAsunto = "", emailCuerpo = "", wappMensaje = "";
 
-// Estado persistente en localStorage
-let estado = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-// estado[id] = { emailEnviadoEn: timestamp, wappEnviado: bool, ultimoContacto: fecha }
+// Estado derivado de Google Contacts (no localStorage)
+// Se reconstruye al cargar los contactos desde las notas
+let estado = {};
 
-function guardarEstado() { localStorage.setItem(STORAGE_KEY, JSON.stringify(estado)); }
+function guardarEstado() { /* Estado en Google Contacts, no localStorage */ }
+
+// Reconstruir estado desde las notas de un contacto
+function reconstruirEstado(c) {
+  if (!c.fuenteG || !c.historial) return;
+  const lineas = c.historial.split("\n").map(l => l.trim()).filter(l => l);
+  const hoyMs = Date.now();
+
+  // Buscar último "Envío email de seguimiento"
+  let fechaEmail = null, idxEmail = -1;
+  // Buscar último "Envío WhatsApp de seguimiento"  
+  let wappEnviado = false;
+  // Buscar última "Próxima acción llamarle en" futura → posponer
+  let posponerHasta = null;
+
+  lineas.forEach((l, i) => {
+    if (l.includes("Envío email de seguimiento")) {
+      const lFecha = lineas[i-1] || "";
+      const mF = lFecha.match(/(\d{1,2})-(\d{1,2})-(\d{4})/);
+      if (mF) {
+        const ts = new Date(`${mF[3]}-${mF[2].padStart(2,"0")}-${mF[1].padStart(2,"0")}`).getTime();
+        if (!isNaN(ts)) { fechaEmail = ts; idxEmail = i; }
+      }
+    }
+    if (l.includes("Envío WhatsApp de seguimiento")) {
+      // Si hay WhatsApp enviado después del email, el email ya no está pendiente
+      wappEnviado = true;
+      fechaEmail = null; // reset — ya no esperamos respuesta al email
+    }
+    if (/pr[oó]xima/i.test(l) && /acci[oó]n/i.test(l)) {
+      const mF = l.match(/(\d{1,2})-(\d{1,2})-(\d{4})/);
+      if (mF) {
+        const fechaISO = `${mF[3]}-${mF[2].padStart(2,"0")}-${mF[1].padStart(2,"0")}`;
+        const fechaTs = new Date(fechaISO).getTime();
+        if (!isNaN(fechaTs) && fechaTs > hoyMs) {
+          posponerHasta = fechaISO;
+        } else {
+          posponerHasta = null; // fecha pasada, ya no posponer
+        }
+      }
+    }
+  });
+
+  // Si hay WhatsApp enviado DESPUÉS del email, limpiar emailEnviadoEn
+  if (wappEnviado) {
+    estado[c.id] = { emailEnviadoEn: null, wappEnviado: true, posponerHasta };
+  } else if (fechaEmail) {
+    estado[c.id] = { emailEnviadoEn: fechaEmail, wappEnviado: false, posponerHasta };
+  } else if (posponerHasta) {
+    estado[c.id] = { emailEnviadoEn: null, wappEnviado: false, posponerHasta };
+  }
+}
 
 const dias = f => Math.floor((Date.now() - new Date(f)) / 86400000);
 const fmt  = f => new Date(f).toLocaleDateString("es-ES",{day:"2-digit",month:"short",year:"numeric"});
@@ -446,10 +497,8 @@ function copiarEmail() { navigator.clipboard.writeText(`Asunto: ${emailAsunto}\n
 function marcarEmailEnviado() {
   if(!selCliente) return;
   const id = selCliente.id;
-  // NO actualizamos ultimoContacto — solo marcamos que el email fue enviado
-  // ultimoContacto se actualiza cuando el cliente RESPONDE (marcarContactadoHoy)
-  estado[id] = { ...estado[id], emailEnviadoEn: Date.now(), posponerHasta: null };
-  guardarEstado();
+  // Actualizar estado en memoria (Google Contacts ya fue actualizado por registrarContactoEnGoogle)
+  estado[id] = { emailEnviadoEn: Date.now(), wappEnviado: false, posponerHasta: null };
   cerrarPanel();
   renderLista();
 }
@@ -459,30 +508,48 @@ function togglePosponer() {
   row.style.display = row.style.display === "none" ? "flex" : "none";
 }
 
-function posponer(dias) {
+async function posponer(numDias) {
   if(!selCliente) return;
   const hasta = new Date();
-  hasta.setDate(hasta.getDate() + dias);
-  const hastaStr = hasta.toISOString().split("T")[0];
-  estado[selCliente.id] = { ...estado[selCliente.id], posponerHasta: hastaStr, emailEnviadoEn: null, wappEnviado: false };
-  guardarEstado();
+  hasta.setDate(hasta.getDate() + numDias);
+  const dd = String(hasta.getDate()).padStart(2,"0");
+  const mm = String(hasta.getMonth()+1).padStart(2,"0");
+  const yyyy = hasta.getFullYear();
+  await posponerAFecha(hasta.toISOString().split("T")[0], `${dd}-${mm}-${yyyy}`);
+}
+
+async function posponerAFecha(isoFecha, fechaDisplay) {
+  if(!selCliente) return;
+  // Actualizar estado en memoria (Google Contacts actualizado por actualizarNotasGoogle)
+  estado[selCliente.id] = { emailEnviadoEn: null, wappEnviado: false, posponerHasta: isoFecha };
+  // Escribir en Google Contacts
+  const hoy = new Date();
+  const hdd = String(hoy.getDate()).padStart(2,"0");
+  const hmm = String(hoy.getMonth()+1).padStart(2,"0");
+  const hyyyy = hoy.getFullYear();
+  const nuevaLinea = `\n${hdd}-${hmm}-${hyyyy}\nPróxima acción llamarle en ${fechaDisplay}`;
+  await actualizarNotasGoogle(selCliente.id, nuevaLinea);
   cerrarPanel();
   renderLista();
 }
 
 function posponerFecha() {
   const inp = document.getElementById("fecha-posponer");
-  inp.style.display = inp.style.display === "none" ? "block" : "none";
-  if(inp.style.display === "block") inp.focus();
+  const btn = document.getElementById("btn-fecha-ok");
+  const show = inp.style.display === "none";
+  inp.style.display = show ? "block" : "none";
+  btn.style.display = show ? "block" : "none";
+  if(show) inp.focus();
 }
 
-function posponerFechaElegida() {
-  const val = document.getElementById("fecha-posponer").value;
-  if(!val || !selCliente) return;
-  estado[selCliente.id] = { ...estado[selCliente.id], posponerHasta: val, emailEnviadoEn: null, wappEnviado: false };
-  guardarEstado();
-  cerrarPanel();
-  renderLista();
+async function posponerFechaElegida() {
+  const txt = document.getElementById("fecha-posponer").value.trim();
+  if(!txt || !selCliente) return;
+  // Parsear DD-MM-AAAA
+  const mF = txt.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (!mF) { alert("Formato incorrecto. Usa DD-MM-AAAA"); return; }
+  const val = `${mF[3]}-${mF[2].padStart(2,"0")}-${mF[1].padStart(2,"0")}`;
+  await posponerAFecha(val, txt);
 }
 
 function estaPostpuesto(id) {
@@ -671,9 +738,8 @@ async function registrarWappEnGoogle() {
 
 function marcarWappEnviado() {
   if(!selCliente) return;
-  estado[selCliente.id] = { ...estado[selCliente.id], wappEnviado: true, ultimoContacto: new Date().toISOString().split("T")[0] };
-  clientes = clientes.map(c => c.id===selCliente.id ? {...c, ultimoContacto: new Date().toISOString().split("T")[0]} : c);
-  guardarEstado();
+  // Actualizar estado en memoria (Google Contacts ya fue actualizado por registrarWappEnGoogle)
+  estado[selCliente.id] = { emailEnviadoEn: null, wappEnviado: true, posponerHasta: null };
   cerrarPanel();
   renderLista();
 }
@@ -722,33 +788,9 @@ function conectarGoogle() {
           });
         }).map(mapContact);
 
-        // Detectar WhatsApp pendiente desde notas
-        const hoyMs = Date.now();
-        filtrados.forEach(c => {
-          if (!c.fuenteG || !c.historial) return;
-          const lineas = c.historial.split("\n");
-          let fechaEmail = null, idxEmail = -1;
-          lineas.forEach((l, i) => {
-            if (l.includes("Envío email de seguimiento")) {
-              const lFecha = lineas[i-1] || "";
-              const mF = lFecha.match(/(\d{1,2})-(\d{1,2})-(\d{4})/);
-              if (mF) {
-                const ts = new Date(`${mF[3]}-${mF[2].padStart(2,"0")}-${mF[1].padStart(2,"0")}`).getTime();
-                if (!isNaN(ts) && ts > (fechaEmail||0)) { fechaEmail = ts; idxEmail = i; }
-              }
-            }
-          });
-          if (!fechaEmail) return;
-          const diasTranscurridos = (hoyMs - fechaEmail) / 86400000;
-          if (diasTranscurridos < 2) return;
-          const hayRespuesta = lineas.slice(idxEmail+1).some(l => l.trim().length > 3);
-          if (!hayRespuesta && !estado[c.id]?.wappEnviado) {
-            if (!estado[c.id]?.emailEnviadoEn) {
-              estado[c.id] = { ...estado[c.id], emailEnviadoEn: fechaEmail };
-              guardarEstado();
-            }
-          }
-        });
+        // Reconstruir estado desde notas de Google Contacts (sin localStorage)
+        estado = {};
+        filtrados.forEach(c => reconstruirEstado(c));
 
         // Ordenar y seleccionar los 100 más relevantes
         const hoy0 = new Date(); hoy0.setHours(0,0,0,0);
@@ -771,6 +813,30 @@ function conectarGoogle() {
             return dias(b.ultimoContacto) - dias(a.ultimoContacto);
           })
           .slice(0, 100);
+
+        // Para contactos sin próxima acción, calcular con IA en background (hasta 5 a la vez)
+        const sinProxima = seleccionados.filter(c => !c.proximaAccion && c.fuenteG && c.historial && c.historial !== "Sin historial.");
+        if (sinProxima.length > 0) {
+          // Calcular en background sin bloquear la UI — procesar en lotes de 5
+          (async () => {
+            for (let i = 0; i < Math.min(sinProxima.length, 20); i++) {
+              const c = sinProxima[i];
+              try {
+                const tipoCliente = c.esClienteFinal ? "Cliente final con flota propia" : c.esIntermediario ? "Intermediario" : "General";
+                const fechaProxima = await calcularProximaAccionIA(c.historial, tipoCliente, false);
+                if (fechaProxima) {
+                  // Actualizar en memoria
+                  clientes = clientes.map(cl => cl.id === c.id ? {...cl, proximaAccion: fechaProxima.split("-").reverse().join("-")} : cl);
+                  // Escribir en Google Contacts
+                  const hoy2 = new Date();
+                  const nuevaLinea = `\nPróxima acción llamarle en ${fechaProxima}`;
+                  await actualizarNotasGoogle(c.id, nuevaLinea);
+                }
+              } catch(e) { /* silencioso */ }
+            }
+            renderLista(); // refrescar lista con nuevas fechas
+          })();
+        }
 
         clientes = seleccionados.length > 0 ? seleccionados : [...DEMO];
         if (!seleccionados.length) mostrarError("No se encontraron contactos. Mostrando demo.");
@@ -808,19 +874,37 @@ function extraerFechas(texto) {
 }
 
 function extraerProximaAccion(texto) {
-  // Detecta todas las líneas con "próxima" y "acción" y devuelve la ÚLTIMA (más reciente)
-  const lineas = texto.split("\n");
-  let ultimaFecha = null;
+  // Solo es válida la fecha de próxima acción si está en el ÚLTIMO bloque de contacto.
+  // Un bloque empieza con una línea que solo contiene una fecha (DD-MM-YYYY o D-M-YYYY).
+  // Si hay un bloque posterior sin fecha de próxima acción, la anterior queda anulada.
+  const lineas = texto.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+  const esFecha = l => /^(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4})$/.test(l);
+
+  // Dividir en bloques por líneas que son solo una fecha
+  const bloques = [];
+  let bloqueActual = [];
   for (const linea of lineas) {
+    if (esFecha(linea) && bloqueActual.length > 0) {
+      bloques.push(bloqueActual);
+      bloqueActual = [linea];
+    } else {
+      bloqueActual.push(linea);
+    }
+  }
+  if (bloqueActual.length > 0) bloques.push(bloqueActual);
+
+  // Buscar en el ÚLTIMO bloque una línea de próxima acción
+  const ultimoBloque = bloques[bloques.length - 1] || [];
+  for (const linea of ultimoBloque) {
     if (/pr[oó]xima/i.test(linea) && /acci[oó]n/i.test(linea)) {
       const mF = linea.match(/(\d{1,2})[\-\/\.](\d{1,2})[\-\/\.](\d{4})/);
       if (mF) {
         const fecha = `${mF[3]}-${mF[2].padStart(2,"0")}-${mF[1].padStart(2,"0")}`;
-        if (!isNaN(new Date(fecha).getTime())) ultimaFecha = fecha;
+        if (!isNaN(new Date(fecha).getTime())) return fecha;
       }
     }
   }
-  return ultimaFecha;
+  return null;
 }
 
 function mapContact(p) {
