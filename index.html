@@ -430,7 +430,7 @@ ASUNTO: [asunto]
     document.getElementById("asunto-text").textContent = emailAsunto;
     document.getElementById("cuerpo-text").textContent = emailCuerpo;
     document.getElementById("btn-abrir-email").href = `mailto:${c.email}?subject=${encodeURIComponent(emailAsunto)}&body=${encodeURIComponent(emailCuerpo)}`;
-    document.getElementById("btn-abrir-email").onclick = () => { registrarContactoEnGoogle(c); marcarEmailEnviado(); };
+    document.getElementById("btn-abrir-email").onclick = async () => { await registrarContactoEnGoogle(c); marcarEmailEnviado(); };
   } catch { emailCuerpo="Error de conexión."; document.getElementById("cuerpo-text").textContent=emailCuerpo; }
   document.getElementById("spin-email").style.display   = "none";
   document.getElementById("email-result").style.display = "block";
@@ -635,6 +635,7 @@ async function registrarContactoEnGoogle(c) {
   const tipoCliente = c.esClienteFinal ? "Cliente final con flota propia" : c.esIntermediario ? "Intermediario (carrocero/renting/servicio oficial)" : "General";
   // Calcular próxima acción con IA
   const fechaProxima = await calcularProximaAccionIA(c.historial, tipoCliente, false);
+  console.log("Próxima acción calculada:", fechaProxima);
   const nuevaLinea = `\n${fechaStr}\n${textoAccion}\nPróxima acción llamarle en ${fechaProxima}`;
   await actualizarNotasGoogle(c.id, nuevaLinea);
 }
@@ -642,8 +643,8 @@ async function registrarContactoEnGoogle(c) {
 function abrirWappWeb() {
   const tel = document.getElementById("wapp-tel").value.replace(/\D/g,"");
   document.getElementById("btn-wapp-web").href = `https://wa.me/${tel}?text=${encodeURIComponent(wappMensaje)}`;
-  setTimeout(() => {
-    registrarWappEnGoogle();
+  setTimeout(async () => {
+    await registrarWappEnGoogle();
     marcarWappEnviado();
   }, 300);
 }
