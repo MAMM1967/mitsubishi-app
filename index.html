@@ -161,13 +161,14 @@
               <button class="btn-secondary" onclick="copiarEmail()">Copiar</button>
             </div>
             <button class="btn-marcar" onclick="marcarEmailEnviado()">✓ Marcar email enviado — esperar respuesta 2 días</button>
-            <button class="btn-obviar" onclick="togglePosponer()">⏭ No procede ahora — posponer</button>
-            <div class="posponer-row" id="posponer-row" style="display:none;">
-              <button class="btn-posponer" onclick="posponer(30)">+1 mes</button>
-              <button class="btn-posponer" onclick="posponer(90)">+3 meses</button>
-              <button class="btn-posponer" onclick="posponerFecha()">📅 Fecha</button>
-              <input type="text" id="fecha-posponer" placeholder="DD-MM-AAAA" style="display:none;background:#111827;border:1px solid #374151;border-radius:6px;padding:4px 8px;color:#e8eaf0;font-size:11px;flex:2;" /><button class="btn-posponer" onclick="posponerFechaElegida()" style="display:none;flex:0.5;" id="btn-fecha-ok">OK</button>
-            </div>
+          </div>
+          <!-- Posponer siempre visible en el tab email -->
+          <button class="btn-obviar" onclick="togglePosponer()" style="margin-top:8px;">⏭ No procede ahora — posponer</button>
+          <div class="posponer-row" id="posponer-row" style="display:none;">
+            <button class="btn-posponer" onclick="posponer(30)">+1 mes</button>
+            <button class="btn-posponer" onclick="posponer(90)">+3 meses</button>
+            <button class="btn-posponer" onclick="posponerFecha()">📅 Fecha</button>
+            <input type="text" id="fecha-posponer" placeholder="DD-MM-AAAA" style="display:none;background:#111827;border:1px solid #374151;border-radius:6px;padding:4px 8px;color:#e8eaf0;font-size:11px;flex:2;" /><button class="btn-posponer" onclick="posponerFechaElegida()" style="display:none;flex:0.5;" id="btn-fecha-ok">OK</button>
           </div>
         </div>
 
