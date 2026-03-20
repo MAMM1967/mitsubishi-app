@@ -925,6 +925,7 @@ function conectarGoogle() {
 
         // Ordenar y seleccionar los 100 más relevantes
         const hoy0 = new Date(); hoy0.setHours(0,0,0,0);
+        const tieneHistorialActivo = c => c.historial && c.historial !== "Sin historial." && c.historial.length > 30;
         const seleccionados = filtrados
           .filter(c => !estaPostpuesto(c.id))
           .sort((a, b) => {
@@ -940,7 +941,11 @@ function conectarGoogle() {
             const aFut = a.proximaAccion && new Date(a.proximaAccion) > hoy0 ? new Date(a.proximaAccion).getTime() : Infinity;
             const bFut = b.proximaAccion && new Date(b.proximaAccion) > hoy0 ? new Date(b.proximaAccion).getTime() : Infinity;
             if (aFut !== bFut) return aFut - bFut;
-            // 4. Más días sin contacto
+            // 4. Con historial activo y +90 días sin contacto → antes que sin historial
+            const aActivo = tieneHistorialActivo(a) && dias(a.ultimoContacto) >= 90 ? 1 : 0;
+            const bActivo = tieneHistorialActivo(b) && dias(b.ultimoContacto) >= 90 ? 1 : 0;
+            if (bActivo !== aActivo) return bActivo - aActivo;
+            // 5. Más días sin contacto
             return dias(b.ultimoContacto) - dias(a.ultimoContacto);
           })
           .slice(0, 100);
