@@ -358,7 +358,7 @@ function renderLista() {
       const bw = necesitaWapp(b.id) ? 1 : 0;
       if (bw !== aw) return bw - aw;
       // 3. Con historial activo y sin contacto hace +90 días → antes que los sin historial
-      const tieneHistorial = c => c.historial && c.historial !== "Sin historial." && c.historial.length > 20;
+      const tieneHistorial = c => c.historial && /\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{4}/.test(c.historial);
       const aActivo = tieneHistorial(a) && dias(a.ultimoContacto) >= 90 ? 1 : 0;
       const bActivo = tieneHistorial(b) && dias(b.ultimoContacto) >= 90 ? 1 : 0;
       if (bActivo !== aActivo) return bActivo - aActivo;
@@ -925,7 +925,7 @@ function conectarGoogle() {
 
         // Ordenar y seleccionar los 100 más relevantes
         const hoy0 = new Date(); hoy0.setHours(0,0,0,0);
-        const tieneHistorialActivo = c => c.historial && c.historial !== "Sin historial." && c.historial.length > 30;
+        const tieneHistorialActivo = c => c.historial && /\d{1,2}[\-\/\.]\d{1,2}[\-\/\.]\d{4}/.test(c.historial);
         const seleccionados = filtrados
           .filter(c => !estaPostpuesto(c.id))
           .sort((a, b) => {
