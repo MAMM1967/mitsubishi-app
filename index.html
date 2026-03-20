@@ -345,19 +345,28 @@ function renderLista() {
     .filter(c => !busq || c.empresa.toLowerCase().includes(busq) || c.contacto.toLowerCase().includes(busq))
     .filter(c => !estaPostpuesto(c.id)) // ocultar postpuestos
     .sort((a,b) => {
-      // 1. Próxima acción vencida (fecha llegada)
+      // 1. Próxima acción vencida → primero, ordenados por fecha más antigua
       const aPA = proximaAccionPendiente(a) ? 1 : 0;
       const bPA = proximaAccionPendiente(b) ? 1 : 0;
       if (bPA !== aPA) return bPA - aPA;
+      if (aPA && bPA) {
+        // Entre vencidas: la más antigua primero (lleva más tiempo esperando)
+        return new Date(a.proximaAccion) - new Date(b.proximaAccion);
+      }
       // 2. WhatsApp pendiente
       const aw = necesitaWapp(a.id) ? 1 : 0;
       const bw = necesitaWapp(b.id) ? 1 : 0;
       if (bw !== aw) return bw - aw;
-      // 3. Email recién enviado (menos de 2 días) → van al final, esperando respuesta
+      // 3. Con historial activo y sin contacto hace +90 días → antes que los sin historial
+      const tieneHistorial = c => c.historial && c.historial !== "Sin historial." && c.historial.length > 20;
+      const aActivo = tieneHistorial(a) && dias(a.ultimoContacto) >= 90 ? 1 : 0;
+      const bActivo = tieneHistorial(b) && dias(b.ultimoContacto) >= 90 ? 1 : 0;
+      if (bActivo !== aActivo) return bActivo - aActivo;
+      // 4. Email recién enviado (menos de 2 días) → van al final, esperando respuesta
       const aEspera = estado[a.id]?.emailEnviadoEn && !necesitaWapp(a.id) && !estado[a.id]?.wappEnviado ? 1 : 0;
       const bEspera = estado[b.id]?.emailEnviadoEn && !necesitaWapp(b.id) && !estado[b.id]?.wappEnviado ? 1 : 0;
-      if (aEspera !== bEspera) return aEspera - bEspera; // los que esperan respuesta van al final
-      // 4. Por días sin contacto
+      if (aEspera !== bEspera) return aEspera - bEspera;
+      // 5. Por días sin contacto
       return dias(b.ultimoContacto) - dias(a.ultimoContacto);
     });
 
