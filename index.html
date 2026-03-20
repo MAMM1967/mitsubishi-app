@@ -950,30 +950,6 @@ function conectarGoogle() {
           })
           .slice(0, 100);
 
-        // Para contactos sin próxima acción, calcular con IA en background (hasta 5 a la vez)
-        const sinProxima = seleccionados.filter(c => !c.proximaAccion && c.fuenteG && c.historial && c.historial !== "Sin historial.");
-        if (sinProxima.length > 0) {
-          // Calcular en background sin bloquear la UI — procesar en lotes de 5
-          (async () => {
-            for (let i = 0; i < Math.min(sinProxima.length, 20); i++) {
-              const c = sinProxima[i];
-              try {
-                const tipoCliente = c.esClienteFinal ? "Cliente final con flota propia" : c.esIntermediario ? "Intermediario" : "General";
-                const fechaProxima = await calcularProximaAccionIA(c.historial, tipoCliente, false);
-                if (fechaProxima) {
-                  // Actualizar en memoria
-                  clientes = clientes.map(cl => cl.id === c.id ? {...cl, proximaAccion: fechaProxima.split("-").reverse().join("-")} : cl);
-                  // Escribir en Google Contacts
-                  const hoy2 = new Date();
-                  const nuevaLinea = `\nPróxima acción llamarle en ${fechaProxima}`;
-                  await actualizarNotasGoogle(c.id, nuevaLinea);
-                }
-              } catch(e) { /* silencioso */ }
-            }
-            renderLista(); // refrescar lista con nuevas fechas
-          })();
-        }
-
         clientes = seleccionados.length > 0 ? seleccionados : [...DEMO];
         if (!seleccionados.length) mostrarError("No se encontraron contactos. Mostrando demo.");
         document.getElementById("btn-google").style.display="none";
