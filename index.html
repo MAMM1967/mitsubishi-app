@@ -511,6 +511,7 @@ async function generarEmail(c) {
       body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000,
         messages:[{role:"user", content:
 `Eres el asistente comercial del Director de Mitsubishi Equipos Frigoríficos para Transporte en España.
+Hoy es ${new Date().toLocaleDateString("es-ES",{day:"2-digit",month:"long",year:"numeric"})}.
 
 CLIENTE:
 - Empresa: ${c.empresa}
@@ -662,6 +663,7 @@ async function generarWapp(c) {
       body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:600,
         messages:[{role:"user", content:
 `Eres el director comercial de Mitsubishi Equipos Frigoríficos para Transporte en España.
+Hoy es ${new Date().toLocaleDateString("es-ES",{day:"2-digit",month:"long",year:"numeric"})}.
 Hace ${dsR||2} días enviaste un email a ${c.contacto} de ${c.empresa} sin obtener respuesta.
 
 Redacta un mensaje de WhatsApp breve y natural para hacer seguimiento. 
@@ -695,6 +697,7 @@ async function generarMensajeLinkedIn(c) {
       body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:400,
         messages:[{role:"user", content:
 `Eres el director comercial de Mitsubishi Equipos Frigoríficos para Transporte en España.
+Hoy es ${new Date().toLocaleDateString("es-ES",{day:"2-digit",month:"long",year:"numeric"})}.
 
 CONTACTO:
 - Nombre: ${c.contacto}${c.cargo ? ` (${c.cargo})` : ""}
